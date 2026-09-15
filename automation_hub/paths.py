@@ -28,6 +28,10 @@ def token_path() -> Path:
     return app_data_dir() / "google_token.dpapi"
 
 
+def google_client_config_path() -> Path:
+    return app_data_dir() / "google_client.dpapi"
+
+
 def audit_log_path() -> Path:
     path = app_data_dir() / "logs" / "audit.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,5 +40,11 @@ def audit_log_path() -> Path:
 
 def blogger_backup_dir() -> Path:
     path = app_data_dir() / "backups" / "blogger"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def job_lock_dir() -> Path:
+    path = app_data_dir() / "locks"
     path.mkdir(parents=True, exist_ok=True)
     return path
