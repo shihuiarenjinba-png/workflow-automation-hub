@@ -23,6 +23,18 @@ class GoogleOAuthConfigTests(unittest.TestCase):
         metadata = validate_google_desktop_client_config(VALID)
         self.assertEqual(metadata.project_id, 'example-project')
 
+    def test_redirect_uris_may_be_absent_for_desktop_client(self):
+        config = json.loads(json.dumps(VALID))
+        del config['installed']['redirect_uris']
+        metadata = validate_google_desktop_client_config(config)
+        self.assertTrue(metadata.client_id.endswith('.apps.googleusercontent.com'))
+
+    def test_known_legacy_google_token_endpoint_is_accepted(self):
+        config = json.loads(json.dumps(VALID))
+        config['installed']['token_uri'] = 'https://accounts.google.com/o/oauth2/token'
+        metadata = validate_google_desktop_client_config(config)
+        self.assertEqual(metadata.project_id, 'example-project')
+
     def test_rejects_web_application_json(self):
         with self.assertRaises(GoogleBloggerError):
             validate_google_desktop_client_config({'web': dict(VALID['installed'])})
