@@ -18,8 +18,13 @@ from .storage import DPAPITokenVault, SecureStoreError
 
 BLOGGER_SCOPE = "https://www.googleapis.com/auth/blogger"
 SCOPES = [BLOGGER_SCOPE]
-GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
-GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+GOOGLE_AUTH_URIS = {
+    "https://accounts.google.com/o/oauth2/auth",
+}
+GOOGLE_TOKEN_URIS = {
+    "https://oauth2.googleapis.com/token",
+    "https://accounts.google.com/o/oauth2/token",
+}
 MAX_CLIENT_JSON_BYTES = 64 * 1024
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -63,6 +68,17 @@ def _require_nonempty_string(obj: dict[str, Any], key: str, *, max_length: int =
     return value
 
 
+def _validate_loopback_redirect(raw_uri: str) -> None:
+    parsed = urlparse(raw_uri)
+    if parsed.scheme != "http" or parsed.hostname not in LOOPBACK_HOSTS:
+        raise GoogleBloggerError(
+            "Desktop OAuth redirect URI must be a local loopback address / "
+            "Desktop OAuthのredirect URIはlocalhost/loopbackである必要があります"
+        )
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise GoogleBloggerError("Desktop OAuth redirect URI contains unsupported components / redirect URIの形式が不正です")
+
+
 def validate_google_desktop_client_config(config: Any) -> GoogleClientMetadata:
     if not isinstance(config, dict):
         raise GoogleBloggerError("OAuth JSON root must be an object / OAuth JSONのルートはオブジェクトである必要があります")
@@ -86,25 +102,24 @@ def validate_google_desktop_client_config(config: Any) -> GoogleClientMetadata:
     _require_nonempty_string(installed, "client_secret", max_length=1024)
     auth_uri = _require_nonempty_string(installed, "auth_uri", max_length=512)
     token_uri = _require_nonempty_string(installed, "token_uri", max_length=512)
-    if auth_uri != GOOGLE_AUTH_URI:
+    if auth_uri not in GOOGLE_AUTH_URIS:
         raise GoogleBloggerError("Unexpected Google auth_uri / Google auth_uriが想定値と異なります")
-    if token_uri != GOOGLE_TOKEN_URI:
+    if token_uri not in GOOGLE_TOKEN_URIS:
         raise GoogleBloggerError("Unexpected Google token_uri / Google token_uriが想定値と異なります")
 
+    # Google's downloaded installed-app examples normally include redirect_uris,
+    # but client-secret format documentation treats fields other than client_id
+    # and client_secret as potentially optional. run_local_server supplies its
+    # own loopback redirect, so absence is accepted; any supplied URI is still
+    # restricted to a local loopback address.
     redirect_uris = installed.get("redirect_uris")
-    if not isinstance(redirect_uris, list) or not redirect_uris:
-        raise GoogleBloggerError("Desktop OAuth JSON must contain redirect_uris / Desktop OAuth JSONにredirect_urisがありません")
-    for raw_uri in redirect_uris:
-        if not isinstance(raw_uri, str):
-            raise GoogleBloggerError("redirect_uris contains a non-string value / redirect_urisの形式が不正です")
-        parsed = urlparse(raw_uri)
-        if parsed.scheme != "http" or parsed.hostname not in LOOPBACK_HOSTS:
-            raise GoogleBloggerError(
-                "Desktop OAuth redirect URI must be a local loopback address / "
-                "Desktop OAuthのredirect URIはlocalhost/loopbackである必要があります"
-            )
-        if parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise GoogleBloggerError("Desktop OAuth redirect URI contains unsupported components / redirect URIの形式が不正です")
+    if redirect_uris is not None:
+        if not isinstance(redirect_uris, list) or not redirect_uris:
+            raise GoogleBloggerError("redirect_uris must be a non-empty list when present / redirect_urisの形式が不正です")
+        for raw_uri in redirect_uris:
+            if not isinstance(raw_uri, str) or not raw_uri.strip():
+                raise GoogleBloggerError("redirect_uris contains an invalid value / redirect_urisの形式が不正です")
+            _validate_loopback_redirect(raw_uri.strip())
 
     project_id = installed.get("project_id", "")
     if project_id is None:
@@ -167,24 +182,31 @@ class GoogleBloggerConnector:
         return self._load_client_config()[1]
 
     def _stored_token_client_id(self) -> str:
-        try:
-            raw = self.token_vault.load_text()
-            if not raw:
-                return ""
-            info = json.loads(raw)
-            value = info.get("client_id", "") if isinstance(info, dict) else ""
-            return str(value)
-        except (SecureStoreError, json.JSONDecodeError, UnicodeError):
+        raw = self.token_vault.load_text()
+        if not raw:
             return ""
+        info = json.loads(raw)
+        if not isinstance(info, dict):
+            return ""
+        value = info.get("client_id", "")
+        return str(value).strip()
 
     def import_client_config(self, source: Path) -> ClientImportResult:
         config, metadata = load_google_desktop_client_file(source)
-        existing_token_client_id = self._stored_token_client_id()
-        token_reset = bool(existing_token_client_id and existing_token_client_id != metadata.client_id)
+        token_reset = False
+        if self.token_vault.exists():
+            try:
+                existing_token_client_id = self._stored_token_client_id()
+            except (SecureStoreError, json.JSONDecodeError, UnicodeError, ValueError):
+                existing_token_client_id = ""
+            if not existing_token_client_id or existing_token_client_id != metadata.client_id:
+                try:
+                    self.token_vault.delete()
+                except SecureStoreError as exc:
+                    raise GoogleBloggerError(f"Could not clear incompatible Google token / 古いGoogleトークンを削除できません: {exc}") from exc
+                token_reset = True
         try:
             self.client_vault.save_text(json.dumps(config, ensure_ascii=False, separators=(",", ":")))
-            if token_reset:
-                self.token_vault.delete()
         except SecureStoreError as exc:
             raise GoogleBloggerError(f"Could not securely import OAuth configuration / OAuth設定を安全に保存できません: {exc}") from exc
         return ClientImportResult(metadata=metadata, token_reset=token_reset)
