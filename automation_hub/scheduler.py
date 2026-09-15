@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .models import BloggerLinkJob, ScheduleSpec
+from .models import BloggerLinkJob, ScheduleSpec, WEEKDAYS, validate_job_id, validate_time
 
 
 class SchedulerError(RuntimeError):
@@ -21,41 +20,24 @@ class SchedulerCheck:
     detail: str
 
 
-WEEKDAYS = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"}
-
-
-def _safe_job_id(job_id: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", job_id)[:64]
-    if not cleaned:
-        raise SchedulerError("Invalid job id / ジョブIDが不正です")
-    return cleaned
-
-
 def task_name(job_id: str) -> str:
-    return f"WorkflowAutomationHub_{_safe_job_id(job_id)}"
-
-
-def validate_time(value: str) -> str:
-    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
-        raise SchedulerError("Time must use HH:MM (24-hour) format / 時刻は24時間制のHH:MM形式で指定してください")
-    return value
+    return f"WorkflowAutomationHub_{validate_job_id(job_id)}"
 
 
 def runner_command(job_id: str) -> str:
-    safe_id = _safe_job_id(job_id)
+    safe_id = validate_job_id(job_id)
     if getattr(sys, "frozen", False):
-        exe = Path(sys.executable).resolve()
-        return f'"{exe}" --run-job "{safe_id}"'
-    exe = Path(sys.executable).resolve()
-    entry = (Path(__file__).resolve().parent.parent / "desktop_app.py").resolve()
-    return f'"{exe}" "{entry}" --run-job "{safe_id}"'
+        argv = [str(Path(sys.executable).resolve()), "--run-job", safe_id]
+    else:
+        entry = (Path(__file__).resolve().parent.parent / "desktop_app.py").resolve()
+        argv = [str(Path(sys.executable).resolve()), str(entry), "--run-job", safe_id]
+    return subprocess.list2cmdline(argv)
 
 
 def build_create_args(job: BloggerLinkJob) -> list[str]:
+    if not job.enabled:
+        raise SchedulerError("Disabled jobs cannot be registered / 無効なジョブはスケジュール登録できません")
     schedule: ScheduleSpec = job.schedule
-    # /IT: run only while the current user is logged on. This avoids storing a
-    # Windows account password and keeps the first release in an interactive-user
-    # security context. /RL LIMITED prevents requesting elevated run level.
     args = [
         "schtasks", "/Create",
         "/TN", task_name(job.id),
@@ -67,7 +49,7 @@ def build_create_args(job: BloggerLinkJob) -> list[str]:
     if schedule.kind == "daily":
         args.extend(["/SC", "DAILY", "/ST", validate_time(schedule.time)])
     elif schedule.kind == "weekly":
-        days = [day for day in schedule.weekdays if day in WEEKDAYS]
+        days = [day for day in WEEKDAYS if day in schedule.weekdays]
         if not days:
             raise SchedulerError("At least one weekday is required / 曜日を1つ以上選択してください")
         args.extend(["/SC", "WEEKLY", "/D", ",".join(days), "/ST", validate_time(schedule.time)])
@@ -84,45 +66,54 @@ class WindowsTaskScheduler:
             return SchedulerCheck(False, "Windows Task Scheduler is available only on Windows / Windowsでのみ利用できます")
         if not shutil.which("schtasks"):
             return SchedulerCheck(False, "schtasks.exe was not found / schtasks.exeが見つかりません")
-        result = subprocess.run(
-            ["schtasks", "/Query", "/FO", "LIST"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=20,
-            shell=False,
-        )
+        try:
+            result = subprocess.run(
+                ["schtasks", "/Query", "/FO", "LIST"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20,
+                shell=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return SchedulerCheck(False, str(exc)[:500])
         return SchedulerCheck(result.returncode == 0, (result.stdout or result.stderr).strip()[:500])
 
     def register(self, job: BloggerLinkJob) -> None:
         if os.name != "nt":
             raise SchedulerError("Windows Task Scheduler is available only on Windows / Windowsでのみ利用できます")
-        result = subprocess.run(
-            build_create_args(job),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            shell=False,
-        )
+        try:
+            result = subprocess.run(
+                build_create_args(job),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                shell=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SchedulerError(f"Could not register task / タスク登録に失敗しました: {exc}") from exc
         if result.returncode != 0:
-            raise SchedulerError((result.stderr or result.stdout).strip())
+            raise SchedulerError((result.stderr or result.stdout).strip() or "schtasks /Create failed")
 
     def unregister(self, job_id: str) -> None:
         if os.name != "nt":
             raise SchedulerError("Windows Task Scheduler is available only on Windows / Windowsでのみ利用できます")
-        result = subprocess.run(
-            ["schtasks", "/Delete", "/TN", task_name(job_id), "/F"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            shell=False,
-        )
+        try:
+            result = subprocess.run(
+                ["schtasks", "/Delete", "/TN", task_name(job_id), "/F"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                shell=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SchedulerError(f"Could not remove task / タスク削除に失敗しました: {exc}") from exc
         if result.returncode != 0:
             message = (result.stderr or result.stdout).strip()
             if "cannot find" not in message.lower() and "見つかりません" not in message:
-                raise SchedulerError(message)
+                raise SchedulerError(message or "schtasks /Delete failed")
