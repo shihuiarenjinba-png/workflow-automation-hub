@@ -1,4 +1,7 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from automation_hub.blogger_automation import insert_link_once, run_link_job
 from automation_hub.models import BloggerLinkJob
@@ -23,6 +26,9 @@ class NullAudit:
 
 
 class BloggerAutomationTests(unittest.TestCase):
+    def setUp(self):
+        self.job = BloggerLinkJob(id="j1", name="test", blog_id="b1", target_text="target", link_url="https://example.com", anchor_text="target")
+
     def test_inserts_first_visible_match(self):
         result = insert_link_once('<p>Hello target world</p>', 'target', 'https://example.com/a', 'Read')
         self.assertTrue(result.changed)
@@ -40,12 +46,37 @@ class BloggerAutomationTests(unittest.TestCase):
         self.assertFalse(result.changed)
         self.assertEqual(result.reason, 'target_not_found')
 
-    def test_dry_run_never_patches(self):
+    def test_dry_run_never_patches_or_writes_backup(self):
         connector = FakeConnector([{"id": "1", "content": "<p>target</p>"}])
-        job = BloggerLinkJob(id="j1", name="test", blog_id="b1", target_text="target", link_url="https://example.com", anchor_text="target")
-        result = run_link_job(connector, job, dry_run=True, audit=NullAudit())
-        self.assertEqual(result.changed, 1)
-        self.assertEqual(connector.patched, [])
+        with tempfile.TemporaryDirectory() as td:
+            backup_root = Path(td) / "backups"
+            result = run_link_job(connector, self.job, dry_run=True, audit=NullAudit(), backup_root=backup_root)
+            self.assertEqual(result.changed, 1)
+            self.assertEqual(connector.patched, [])
+            self.assertFalse(backup_root.exists())
+
+    def test_live_run_backs_up_original_before_patch(self):
+        original = "<p>target original</p>"
+        connector = FakeConnector([{"id": "1", "title": "Title", "url": "https://blog.example/p", "content": original}])
+        with tempfile.TemporaryDirectory() as td:
+            backup_root = Path(td) / "backups"
+            result = run_link_job(connector, self.job, dry_run=False, audit=NullAudit(), backup_root=backup_root)
+            self.assertEqual(result.changed, 1)
+            self.assertEqual(len(connector.patched), 1)
+            files = list(backup_root.glob("*.json"))
+            self.assertEqual(len(files), 1)
+            payload = json.loads(files[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["original_content"], original)
+            self.assertEqual(payload["post_id"], "1")
+
+    def test_backup_failure_prevents_remote_patch(self):
+        connector = FakeConnector([{"id": "1", "content": "<p>target</p>"}])
+        with tempfile.TemporaryDirectory() as td:
+            not_a_directory = Path(td) / "file"
+            not_a_directory.write_text("x", encoding="utf-8")
+            with self.assertRaises(OSError):
+                run_link_job(connector, self.job, dry_run=False, audit=NullAudit(), backup_root=not_a_directory)
+            self.assertEqual(connector.patched, [])
 
 
 if __name__ == '__main__':
