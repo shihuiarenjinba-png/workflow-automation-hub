@@ -1,0 +1,4 @@
+google-auth>=2.0
+google-auth-oauthlib>=1.0
+keyring>=25.0
+pywin32>=306; sys_platform == "win32"
