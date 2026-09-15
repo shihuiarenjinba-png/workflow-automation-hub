@@ -34,7 +34,13 @@ class SettingsStore:
         while target.exists():
             target = self.path.with_name(f"{self.path.name}.corrupt-{stamp}-{counter}")
             counter += 1
-        os.replace(self.path, target)
+        try:
+            os.replace(self.path, target)
+        except OSError:
+            # A locked/read-only corrupt file must not prevent the desktop app
+            # from opening. Saving new settings may still fail later, at which
+            # point save() reports that failure explicitly.
+            return None
         return target
 
     def load(self) -> dict[str, Any]:
