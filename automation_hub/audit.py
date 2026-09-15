@@ -14,6 +14,10 @@ SENSITIVE_KEY_PARTS = (
     "authorization", "api_key", "apikey", "credential",
 )
 REDACTED = "[REDACTED]"
+SENSITIVE_TEXT_PATTERN = re.compile(
+    r'''(?i)(["']?(?:access_token|refresh_token|id_token|client_secret|api_key|password)["']?\s*[:=]\s*["']?)([^"'\s,}&]+)'''
+)
+BEARER_PATTERN = re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._~+\-/]+=*")
 
 
 def _is_sensitive_key(key: str) -> bool:
@@ -22,13 +26,8 @@ def _is_sensitive_key(key: str) -> bool:
 
 
 def _redact_text(value: str) -> str:
-    value = re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._~+\-/]+=*", rf"\1{REDACTED}", value)
-    value = re.sub(
-        r'(?i)(["\']?(?:access_token|refresh_token|id_token|client_secret|api_key|password)["\']?\s*[:=]\s*["\']?)([^"\'\s,}&]+)',
-        rf"\1{REDACTED}",
-        value,
-    )
-    return value
+    value = BEARER_PATTERN.sub(rf"\1{REDACTED}", value)
+    return SENSITIVE_TEXT_PATTERN.sub(rf"\1{REDACTED}", value)
 
 
 def _redact(value: Any, key: str = "") -> Any:
