@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from automation_hub.google_blogger import GoogleBloggerError, load_google_desktop_client_file, validate_google_desktop_client_config
+from automation_hub.google_blogger import GoogleBloggerConnector, GoogleBloggerError, load_google_desktop_client_file, validate_google_desktop_client_config
 
 
 VALID = {
@@ -16,6 +16,23 @@ VALID = {
         'redirect_uris': ['http://localhost'],
     }
 }
+
+
+class FakeVault:
+    def __init__(self, text=None):
+        self.text = text
+
+    def exists(self):
+        return self.text is not None
+
+    def load_text(self):
+        return self.text
+
+    def save_text(self, text):
+        self.text = text
+
+    def delete(self):
+        self.text = None
 
 
 class GoogleOAuthConfigTests(unittest.TestCase):
@@ -51,6 +68,34 @@ class GoogleOAuthConfigTests(unittest.TestCase):
             path.write_text(' ' * (70 * 1024), encoding='utf-8')
             with self.assertRaises(GoogleBloggerError):
                 load_google_desktop_client_file(path)
+
+    def test_import_replaces_token_when_client_id_changes(self):
+        old_token = json.dumps({'client_id': 'old.apps.googleusercontent.com'})
+        token_vault = FakeVault(old_token)
+        client_vault = FakeVault()
+        connector = GoogleBloggerConnector(token_vault=token_vault, client_vault=client_vault)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'credentials.json'
+            path.write_text(json.dumps(VALID), encoding='utf-8')
+            result = connector.import_client_config(path)
+        self.assertTrue(result.token_reset)
+        self.assertIsNone(token_vault.text)
+        self.assertIsNotNone(client_vault.text)
+
+    def test_import_keeps_token_for_same_client_and_no_longer_needs_source_file(self):
+        client_id = VALID['installed']['client_id']
+        token_vault = FakeVault(json.dumps({'client_id': client_id}))
+        client_vault = FakeVault()
+        connector = GoogleBloggerConnector(token_vault=token_vault, client_vault=client_vault)
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'credentials.json'
+            path.write_text(json.dumps(VALID), encoding='utf-8')
+            result = connector.import_client_config(path)
+            path.unlink()
+            metadata = connector.client_metadata()
+        self.assertFalse(result.token_reset)
+        self.assertIsNotNone(token_vault.text)
+        self.assertEqual(metadata.client_id, client_id)
 
 
 if __name__ == '__main__':
