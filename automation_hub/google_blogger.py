@@ -4,21 +4,46 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
+from google.auth.exceptions import RefreshError, TransportError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .storage import DPAPITokenVault
+from .paths import google_client_config_path, token_path
+from .storage import DPAPITokenVault, SecureStoreError
 
 BLOGGER_SCOPE = "https://www.googleapis.com/auth/blogger"
 SCOPES = [BLOGGER_SCOPE]
+GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
+GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+MAX_CLIENT_JSON_BYTES = 64 * 1024
+LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 class GoogleBloggerError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class GoogleClientMetadata:
+    client_id: str
+    project_id: str = ""
+
+    @property
+    def client_id_hint(self) -> str:
+        if len(self.client_id) <= 24:
+            return self.client_id
+        return f"{self.client_id[:12]}…{self.client_id[-12:]}"
+
+
+@dataclass(frozen=True)
+class ClientImportResult:
+    metadata: GoogleClientMetadata
+    token_reset: bool
 
 
 @dataclass
@@ -28,44 +53,204 @@ class ConnectionResult:
     detail: str = ""
 
 
+def _require_nonempty_string(obj: dict[str, Any], key: str, *, max_length: int = 4096) -> str:
+    value = obj.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise GoogleBloggerError(f"OAuth JSON is missing '{key}' / OAuth JSONに'{key}'がありません")
+    value = value.strip()
+    if len(value) > max_length:
+        raise GoogleBloggerError(f"OAuth JSON field '{key}' is too long / OAuth JSONの'{key}'が長すぎます")
+    return value
+
+
+def validate_google_desktop_client_config(config: Any) -> GoogleClientMetadata:
+    if not isinstance(config, dict):
+        raise GoogleBloggerError("OAuth JSON root must be an object / OAuth JSONのルートはオブジェクトである必要があります")
+    if "installed" not in config:
+        if "web" in config:
+            raise GoogleBloggerError(
+                "This is a Web application OAuth JSON. Create a Google OAuth client with Application type 'Desktop app'. / "
+                "これはWeb application用OAuth JSONです。Application typeを'Desktop app'にして作成してください"
+            )
+        raise GoogleBloggerError(
+            "Only Google OAuth Desktop app JSON is supported (missing 'installed'). / "
+            "Google OAuthのDesktop app用JSONのみ対応しています（'installed'がありません）"
+        )
+    installed = config.get("installed")
+    if not isinstance(installed, dict):
+        raise GoogleBloggerError("OAuth JSON 'installed' must be an object / 'installed'の形式が不正です")
+
+    client_id = _require_nonempty_string(installed, "client_id", max_length=512)
+    if not client_id.endswith(".apps.googleusercontent.com"):
+        raise GoogleBloggerError("Google OAuth client_id format is invalid / Google OAuth client_idの形式が不正です")
+    _require_nonempty_string(installed, "client_secret", max_length=1024)
+    auth_uri = _require_nonempty_string(installed, "auth_uri", max_length=512)
+    token_uri = _require_nonempty_string(installed, "token_uri", max_length=512)
+    if auth_uri != GOOGLE_AUTH_URI:
+        raise GoogleBloggerError("Unexpected Google auth_uri / Google auth_uriが想定値と異なります")
+    if token_uri != GOOGLE_TOKEN_URI:
+        raise GoogleBloggerError("Unexpected Google token_uri / Google token_uriが想定値と異なります")
+
+    redirect_uris = installed.get("redirect_uris")
+    if not isinstance(redirect_uris, list) or not redirect_uris:
+        raise GoogleBloggerError("Desktop OAuth JSON must contain redirect_uris / Desktop OAuth JSONにredirect_urisがありません")
+    for raw_uri in redirect_uris:
+        if not isinstance(raw_uri, str):
+            raise GoogleBloggerError("redirect_uris contains a non-string value / redirect_urisの形式が不正です")
+        parsed = urlparse(raw_uri)
+        if parsed.scheme != "http" or parsed.hostname not in LOOPBACK_HOSTS:
+            raise GoogleBloggerError(
+                "Desktop OAuth redirect URI must be a local loopback address / "
+                "Desktop OAuthのredirect URIはlocalhost/loopbackである必要があります"
+            )
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise GoogleBloggerError("Desktop OAuth redirect URI contains unsupported components / redirect URIの形式が不正です")
+
+    project_id = installed.get("project_id", "")
+    if project_id is None:
+        project_id = ""
+    if not isinstance(project_id, str) or len(project_id) > 256:
+        raise GoogleBloggerError("OAuth JSON project_id is invalid / OAuth JSONのproject_idが不正です")
+    return GoogleClientMetadata(client_id=client_id, project_id=project_id.strip())
+
+
+def load_google_desktop_client_file(path: Path) -> tuple[dict[str, Any], GoogleClientMetadata]:
+    path = path.expanduser().resolve()
+    if not path.is_file():
+        raise GoogleBloggerError(f"OAuth credentials file not found / OAuth設定ファイルが見つかりません: {path}")
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise GoogleBloggerError(f"Cannot inspect OAuth JSON / OAuth JSONを確認できません: {exc}") from exc
+    if size <= 0 or size > MAX_CLIENT_JSON_BYTES:
+        raise GoogleBloggerError("OAuth JSON file size is invalid / OAuth JSONのファイルサイズが不正です")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise GoogleBloggerError(f"OAuth JSON cannot be read / OAuth JSONを読み込めません: {exc}") from exc
+    metadata = validate_google_desktop_client_config(raw)
+    return raw, metadata
+
+
 class GoogleBloggerConnector:
-    def __init__(self, credentials_file: Path, vault: DPAPITokenVault | None = None) -> None:
-        self.credentials_file = credentials_file.expanduser().resolve()
-        self.vault = vault or DPAPITokenVault()
+    def __init__(
+        self,
+        token_vault: DPAPITokenVault | None = None,
+        client_vault: DPAPITokenVault | None = None,
+    ) -> None:
+        self.token_vault = token_vault or DPAPITokenVault(token_path())
+        self.client_vault = client_vault or DPAPITokenVault(google_client_config_path())
+
+    def has_client_config(self) -> bool:
+        return self.client_vault.exists()
+
+    def has_token(self) -> bool:
+        return self.token_vault.exists()
+
+    def _load_client_config(self) -> tuple[dict[str, Any], GoogleClientMetadata]:
+        try:
+            raw = self.client_vault.load_text()
+        except SecureStoreError as exc:
+            raise GoogleBloggerError(f"Stored OAuth client configuration cannot be decrypted / 保存済みOAuth設定を復号できません: {exc}") from exc
+        if not raw:
+            raise GoogleBloggerError(
+                "Google OAuth Desktop app JSON has not been imported / Google OAuth Desktop app用JSONがインポートされていません"
+            )
+        try:
+            config = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise GoogleBloggerError("Stored OAuth client configuration is corrupted / 保存済みOAuth設定が破損しています") from exc
+        metadata = validate_google_desktop_client_config(config)
+        return config, metadata
+
+    def client_metadata(self) -> GoogleClientMetadata:
+        return self._load_client_config()[1]
+
+    def _stored_token_client_id(self) -> str:
+        try:
+            raw = self.token_vault.load_text()
+            if not raw:
+                return ""
+            info = json.loads(raw)
+            value = info.get("client_id", "") if isinstance(info, dict) else ""
+            return str(value)
+        except (SecureStoreError, json.JSONDecodeError, UnicodeError):
+            return ""
+
+    def import_client_config(self, source: Path) -> ClientImportResult:
+        config, metadata = load_google_desktop_client_file(source)
+        existing_token_client_id = self._stored_token_client_id()
+        token_reset = bool(existing_token_client_id and existing_token_client_id != metadata.client_id)
+        try:
+            self.client_vault.save_text(json.dumps(config, ensure_ascii=False, separators=(",", ":")))
+            if token_reset:
+                self.token_vault.delete()
+        except SecureStoreError as exc:
+            raise GoogleBloggerError(f"Could not securely import OAuth configuration / OAuth設定を安全に保存できません: {exc}") from exc
+        return ClientImportResult(metadata=metadata, token_reset=token_reset)
 
     def authenticate(self, locale: str = "ja") -> Credentials:
-        if not self.credentials_file.is_file():
-            raise GoogleBloggerError(f"OAuth credentials file not found: {self.credentials_file}")
-        flow = InstalledAppFlow.from_client_secrets_file(str(self.credentials_file), SCOPES)
-        success = "Authentication completed. You may close this window." if locale == "en" else "認証が完了しました。このウィンドウを閉じて構いません。"
-        credentials = flow.run_local_server(
-            port=0,
-            open_browser=True,
-            access_type="offline",
-            prompt="consent",
-            success_message=success,
-        )
-        self.vault.save_text(credentials.to_json())
-        return credentials
+        config, _metadata = self._load_client_config()
+        try:
+            flow = InstalledAppFlow.from_client_config(config, SCOPES)
+            success = (
+                "Authentication completed. You may close this window."
+                if locale == "en"
+                else "認証が完了しました。このウィンドウを閉じて構いません。"
+            )
+            credentials = flow.run_local_server(
+                port=0,
+                open_browser=True,
+                access_type="offline",
+                prompt="consent",
+                success_message=success,
+            )
+            self.token_vault.save_text(credentials.to_json())
+            return credentials
+        except (ValueError, OSError, SecureStoreError) as exc:
+            raise GoogleBloggerError(f"Google authentication failed / Google認証に失敗しました: {exc}") from exc
 
     def disconnect(self) -> None:
-        self.vault.delete()
+        try:
+            self.token_vault.delete()
+        except SecureStoreError as exc:
+            raise GoogleBloggerError(str(exc)) from exc
+
+    def remove_client_config(self) -> None:
+        try:
+            self.token_vault.delete()
+            self.client_vault.delete()
+        except SecureStoreError as exc:
+            raise GoogleBloggerError(str(exc)) from exc
 
     def _load_credentials(self) -> Credentials:
-        raw = self.vault.load_text()
+        try:
+            raw = self.token_vault.load_text()
+        except SecureStoreError as exc:
+            raise GoogleBloggerError(f"Stored Google token cannot be decrypted / 保存済みGoogleトークンを復号できません: {exc}") from exc
         if not raw:
-            raise GoogleBloggerError("Google account is not authenticated")
-        info = json.loads(raw)
-        credentials = Credentials.from_authorized_user_info(info, SCOPES)
-        if credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-            self.vault.save_text(credentials.to_json())
+            raise GoogleBloggerError("Google account is not authenticated / Googleアカウントが認証されていません")
+        try:
+            info = json.loads(raw)
+            credentials = Credentials.from_authorized_user_info(info, SCOPES)
+            if credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+                self.token_vault.save_text(credentials.to_json())
+        except (json.JSONDecodeError, ValueError, RefreshError, TransportError, OSError, SecureStoreError) as exc:
+            raise GoogleBloggerError(
+                f"Google credentials are invalid or expired; reconnect the account / Google認証情報が無効です。再接続してください: {exc}"
+            ) from exc
         if not credentials.valid:
-            raise GoogleBloggerError("Google credentials are not valid; reconnect the account")
+            raise GoogleBloggerError("Google credentials are not valid; reconnect the account / Googleを再接続してください")
         return credentials
 
     def _service(self):
-        return build("blogger", "v3", credentials=self._load_credentials(), cache_discovery=False)
+        try:
+            return build("blogger", "v3", credentials=self._load_credentials(), cache_discovery=False)
+        except Exception as exc:
+            if isinstance(exc, GoogleBloggerError):
+                raise
+            raise GoogleBloggerError(f"Could not create Blogger API client / Blogger APIクライアントを作成できません: {exc}") from exc
 
     def check_connection(self) -> ConnectionResult:
         try:
@@ -75,8 +260,10 @@ class GoogleBloggerConnector:
                 for item in response.get("items", [])
             ]
             return ConnectionResult(True, blogs, "ok")
+        except GoogleBloggerError:
+            raise
         except (HttpError, OSError, ValueError) as exc:
-            raise GoogleBloggerError(str(exc)) from exc
+            raise GoogleBloggerError(f"Blogger API connection failed / Blogger API接続に失敗しました: {exc}") from exc
 
     def list_blogs(self) -> list[dict[str, str]]:
         return self.check_connection().blogs
@@ -88,11 +275,18 @@ class GoogleBloggerConnector:
         remaining = max(1, min(int(max_posts), 500))
         while remaining > 0:
             batch = min(remaining, 50)
-            request = service.posts().list(blogId=blog_id, status=[status], maxResults=batch, fetchBodies=True, pageToken=page_token)
-            response = request.execute(num_retries=2)
+            try:
+                response = service.posts().list(
+                    blogId=blog_id, status=[status], maxResults=batch, fetchBodies=True, pageToken=page_token
+                ).execute(num_retries=2)
+            except HttpError as exc:
+                raise GoogleBloggerError(f"Could not list Blogger posts / Blogger記事一覧を取得できません: {exc}") from exc
             items = response.get("items", [])
-            collected.extend(items[:remaining])
-            remaining -= len(items[:remaining])
+            if not isinstance(items, list):
+                raise GoogleBloggerError("Unexpected Blogger API response / Blogger API応答形式が不正です")
+            take = items[:remaining]
+            collected.extend(take)
+            remaining -= len(take)
             page_token = response.get("nextPageToken")
             if not page_token or not items:
                 break
@@ -100,6 +294,8 @@ class GoogleBloggerConnector:
 
     def patch_post_content(self, blog_id: str, post_id: str, content: str) -> dict[str, Any]:
         try:
-            return self._service().posts().patch(blogId=blog_id, postId=post_id, body={"content": content}, fetchBody=False).execute(num_retries=2)
+            return self._service().posts().patch(
+                blogId=blog_id, postId=post_id, body={"content": content}, fetchBody=False
+            ).execute(num_retries=2)
         except HttpError as exc:
-            raise GoogleBloggerError(str(exc)) from exc
+            raise GoogleBloggerError(f"Could not update Blogger post / Blogger記事を更新できません: {exc}") from exc
