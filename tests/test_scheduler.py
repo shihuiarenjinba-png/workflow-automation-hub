@@ -6,15 +6,18 @@ from automation_hub.scheduler import SchedulerError, build_create_args, task_nam
 
 
 class SchedulerTests(unittest.TestCase):
-    def test_daily_args_are_fixed_runner(self):
+    def test_daily_args_are_fixed_interactive_limited_runner(self):
         job = BloggerLinkJob(id='job-1', name='x', blog_id='b', target_text='x', link_url='https://example.com', anchor_text='x', schedule=ScheduleSpec(kind='daily', time='08:30'))
         with patch('automation_hub.scheduler.sys.executable', r'C:\Python\python.exe'):
             args = build_create_args(job)
         self.assertEqual(args[0], 'schtasks')
         self.assertIn('/RL', args)
         self.assertIn('LIMITED', args)
-        self.assertIn('--run-job', args[args.index('/TR') + 1])
-        self.assertNotIn('powershell', args[args.index('/TR') + 1].lower())
+        self.assertIn('/IT', args)
+        command = args[args.index('/TR') + 1]
+        self.assertIn('--run-job', command)
+        self.assertNotIn('powershell', command.lower())
+        self.assertNotIn('cmd.exe', command.lower())
 
     def test_weekly_requires_day(self):
         job = BloggerLinkJob(id='j', name='x', blog_id='b', target_text='x', link_url='https://example.com', anchor_text='x', schedule=ScheduleSpec(kind='weekly', time='08:00', weekdays=[]))
