@@ -30,22 +30,34 @@ class BloggerAutomationTests(unittest.TestCase):
     def setUp(self):
         self.job = BloggerLinkJob(id='j1', name='test', blog_id='b1', target_text='target', link_url='https://example.com', anchor_text='target')
 
-    def test_inserts_first_visible_match(self):
-        result = insert_link_once('<p>Hello target world</p>', 'target', 'https://example.com/a', 'Read')
+    def test_inserts_first_visible_match_without_reformatting_other_html(self):
+        source = '<DIV class="X"><p data-z="1">Hello target world</p><BR/></DIV>'
+        result = insert_link_once(source, 'target', 'https://example.com/a?x=1&y=2', 'Read & Go')
         self.assertTrue(result.changed)
-        self.assertIn('<a href="https://example.com/a">Read</a>', result.html)
+        self.assertEqual(
+            result.html,
+            '<DIV class="X"><p data-z="1">Hello <a href="https://example.com/a?x=1&amp;y=2">Read &amp; Go</a> world</p><BR/></DIV>',
+        )
 
-    def test_skips_if_url_already_present(self):
-        html = '<p><a href="https://example.com/a">Existing</a> target</p>'
+    def test_skips_if_url_already_present_and_returns_original_bytes(self):
+        html = '<P><a href="https://example.com/a">Existing</a> target</P>'
         result = insert_link_once(html, 'target', 'https://example.com/a', 'Read')
         self.assertFalse(result.changed)
         self.assertEqual(result.reason, 'link_already_present')
+        self.assertEqual(result.html, html)
 
     def test_does_not_replace_inside_nested_existing_link(self):
         html = '<p><a href="https://other.example/"><span>target</span></a></p>'
         result = insert_link_once(html, 'target', 'https://example.com/a', 'Read')
         self.assertFalse(result.changed)
         self.assertEqual(result.reason, 'target_not_found')
+        self.assertEqual(result.html, html)
+
+    def test_does_not_guess_across_html_entity(self):
+        html = '<p>A &amp; B</p>'
+        result = insert_link_once(html, 'A & B', 'https://example.com/a', 'Read')
+        self.assertFalse(result.changed)
+        self.assertEqual(result.html, html)
 
     def test_dry_run_never_patches_or_writes_backup(self):
         connector = FakeConnector([{'id': '1', 'content': '<p>target</p>'}])
