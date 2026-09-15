@@ -14,6 +14,7 @@ A **deterministic, local-first** Windows automation desktop app. It does not del
 - Blogger内部リンク自動挿入 / deterministic Blogger internal-link insertion
 - 同一URL重複防止 / duplicate-URL protection
 - Dry Run
+- 実更新前のローカル記事バックアップ / local pre-write Blogger backup
 - 実行監査ログ / audit log
 - Windows Task Scheduler 接続確認・登録・削除
 - Daily / Weekly / Windows logon scheduling
@@ -30,9 +31,11 @@ The EXE may be kept on Desktop. Credentials and settings are not stored next to 
   jobs.json
   google_token.dpapi
   logs\audit.jsonl
+  backups\blogger\*.json
 ```
 
-`google_token.dpapi` は現在のWindowsユーザーに紐づくDPAPI暗号化データです。
+`google_token.dpapi` は現在のWindowsユーザーに紐づくDPAPI暗号化データです。Bloggerを実更新する場合、変更対象記事の元HTMLを `backups\blogger` に保存してからAPI patchを実行します。バックアップ保存に失敗した場合は、その記事を更新しません。  
+`google_token.dpapi` is protected by Windows DPAPI for the current user. Before a live Blogger patch, the original post HTML is saved under `backups\blogger`; if backup creation fails, the remote post is not patched.
 
 ## Google setup / Google初期設定
 
@@ -56,9 +59,14 @@ Public/commercial distribution can trigger additional OAuth production requireme
 GUIからDaily / Weekly / Windows logonを設定し、Windows標準 `schtasks.exe` へ登録します。
 
 - Run level: `LIMITED`
+- Interactive-user only: `/IT`
 - Task action: this application only
 - Argument: sanitized `--run-job <job-id>` only
 - No arbitrary shell/PowerShell command configuration
+- Windowsアカウントのパスワードをアプリへ保存しません / the app does not store the Windows account password
+
+初版ではユーザーがWindowsへログオン中のときだけ実行します。PCにログオンしていない状態での無人実行は対象外です。  
+The first release runs scheduled jobs only while the user is logged on; logged-out unattended execution is intentionally out of scope.
 
 アプリを移動すると既存タスクのEXEパスが古くなるため、移動後はスケジュールを再登録してください。  
 If the EXE is moved, re-register schedules so Windows receives the new executable path.
@@ -87,8 +95,9 @@ GitHub Actionsの `Windows build / Windowsビルド` でもWindows EXEをArtifac
 2. No arbitrary command scheduler / 任意コマンドのスケジュール登録なし
 3. OAuth tokens encrypted with Windows DPAPI
 4. Dry Run before remote writes
-5. Blogger uses the official API, not scraping
-6. Every production connector must expose a Connection Test
-7. Connector policy/commercial-use review is required before release
+5. Local backup before each live Blogger patch
+6. Blogger uses the official API, not scraping
+7. Every production connector must expose a Connection Test
+8. Connector policy/commercial-use review is required before release
 
 See `COMPLIANCE.md` for current policy notes. / 規約確認は `COMPLIANCE.md` を参照してください。
