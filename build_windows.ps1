@@ -27,9 +27,9 @@ if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) {
     throw "EXE was not created / EXEが作成されませんでした"
 }
 
-& ".\dist\WorkflowAutomationHub.exe" --self-test
-if ($LASTEXITCODE -ne 0) {
-    throw "Packaged EXE self-test failed / EXE自己診断に失敗しました"
+$process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru
+if ($process.ExitCode -ne 0) {
+    throw "Packaged EXE self-test failed / EXE自己診断に失敗しました (exit=$($process.ExitCode))"
 }
 
 Write-Host "Build complete / ビルド完了: dist\WorkflowAutomationHub.exe"
