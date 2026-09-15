@@ -7,7 +7,9 @@ if (-not (Test-Path ".venv")) {
 
 $python = Join-Path $PWD ".venv\Scripts\python.exe"
 & $python -m pip install --upgrade pip
-& $python -m pip install -r requirements.txt pyinstaller
+& $python -m pip install -r requirements-build.txt
+& $python -m pip check
+& $python -m unittest discover -s tests -v
 
 & $python -m PyInstaller `
     --noconfirm `
@@ -19,5 +21,9 @@ $python = Join-Path $PWD ".venv\Scripts\python.exe"
     --collect-all googleapiclient `
     --collect-all google_auth_oauthlib `
     desktop_app.py
+
+if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) {
+    throw "EXE was not created / EXEが作成されませんでした"
+}
 
 Write-Host "Build complete / ビルド完了: dist\WorkflowAutomationHub.exe"
