@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -8,6 +12,7 @@ from bs4 import BeautifulSoup, NavigableString
 
 from .audit import AuditLogger
 from .models import BloggerLinkJob
+from .paths import blogger_backup_dir
 
 if TYPE_CHECKING:
     from .google_blogger import GoogleBloggerConnector
@@ -35,12 +40,12 @@ class JobRunResult:
 def validate_http_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise BloggerAutomationError("link_url must be an absolute http/https URL")
+        raise BloggerAutomationError("link_url must be an absolute http/https URL / link_urlはhttp/httpsの絶対URLで指定してください")
 
 
 def insert_link_once(html: str, target_text: str, link_url: str, anchor_text: str | None = None) -> LinkInsertionResult:
     if not target_text:
-        raise BloggerAutomationError("target_text must not be empty")
+        raise BloggerAutomationError("target_text must not be empty / 検索文字は空にできません")
     validate_http_url(link_url)
     anchor_text = anchor_text or target_text
     soup = BeautifulSoup(html or "", "html.parser")
@@ -75,7 +80,41 @@ def insert_link_once(html: str, target_text: str, link_url: str, anchor_text: st
     return LinkInsertionResult(str(soup), False, "target_not_found")
 
 
-def run_link_job(connector: "GoogleBloggerConnector", job: BloggerLinkJob, *, dry_run: bool, audit: AuditLogger | None = None) -> JobRunResult:
+def _safe_component(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", value)[:100]
+    return cleaned or "unknown"
+
+
+def _write_backup(job: BloggerLinkJob, post: dict[str, Any], original_content: str, backup_root: Path) -> Path:
+    backup_root.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    post_id = str(post.get("id", "unknown"))
+    filename = f"{_safe_component(job.id)}_{_safe_component(job.blog_id)}_{_safe_component(post_id)}_{timestamp}.json"
+    path = backup_root / filename
+    payload = {
+        "backup_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "job_id": job.id,
+        "blog_id": job.blog_id,
+        "post_id": post_id,
+        "title": str(post.get("title", "")),
+        "url": str(post.get("url", "")),
+        "published": str(post.get("published", "")),
+        "updated": str(post.get("updated", "")),
+        "original_content": original_content,
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def run_link_job(
+    connector: "GoogleBloggerConnector",
+    job: BloggerLinkJob,
+    *,
+    dry_run: bool,
+    audit: AuditLogger | None = None,
+    backup_root: Path | None = None,
+) -> JobRunResult:
     audit = audit or AuditLogger()
     result = JobRunResult()
     audit.write("blogger_job_start", job_id=job.id, dry_run=dry_run, blog_id=job.blog_id)
@@ -91,9 +130,29 @@ def run_link_job(connector: "GoogleBloggerConnector", job: BloggerLinkJob, *, dr
         if not insertion.changed:
             result.skipped_no_match += 1
             continue
+
+        backup_path: Path | None = None
         if not dry_run:
+            # The backup is intentionally written before the remote patch. If local
+            # backup creation fails, the remote Blogger post is left untouched.
+            backup_path = _write_backup(job, post, content, backup_root or blogger_backup_dir())
             connector.patch_post_content(job.blog_id, post_id, insertion.html)
+
         result.changed += 1
-        audit.write("blogger_post_change", job_id=job.id, post_id=post_id, dry_run=dry_run)
-    audit.write("blogger_job_finish", job_id=job.id, dry_run=dry_run, scanned=result.scanned, changed=result.changed, skipped_existing=result.skipped_existing, skipped_no_match=result.skipped_no_match)
+        audit.write(
+            "blogger_post_change",
+            job_id=job.id,
+            post_id=post_id,
+            dry_run=dry_run,
+            backup_path=str(backup_path) if backup_path else "",
+        )
+    audit.write(
+        "blogger_job_finish",
+        job_id=job.id,
+        dry_run=dry_run,
+        scanned=result.scanned,
+        changed=result.changed,
+        skipped_existing=result.skipped_existing,
+        skipped_no_match=result.skipped_no_match,
+    )
     return result
