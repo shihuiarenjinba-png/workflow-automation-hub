@@ -12,7 +12,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Workflow Automation Hub / ワークフロー自動化ハブ")
     parser.add_argument("--run-job", help="Run a saved Blogger job / 保存済みBloggerジョブを実行")
     parser.add_argument("--dry-run", action="store_true", help="Preview only / 変更せず確認のみ")
+    parser.add_argument("--self-test", action="store_true", help="Run local package diagnostics / ローカル自己診断")
     args = parser.parse_args()
+
+    if args.self_test:
+        from automation_hub.selftest import format_self_test, run_self_test
+        try:
+            print(format_self_test(run_self_test()))
+            return 0
+        except Exception as exc:
+            print(f"SELF-TEST ERROR: {exc}", file=sys.stderr)
+            return 2
+
     locale = str(SettingsStore().load().get("locale", "ja"))
     if args.run_job:
         from automation_hub.runner import run_saved_job
@@ -27,6 +38,7 @@ def main() -> int:
             audit.write("scheduled_job_error", job_id=args.run_job, dry_run=args.dry_run, error=type(exc).__name__, detail=str(exc)[:1000])
             print(f"{tr(locale, 'status_error')}: {exc}", file=sys.stderr)
             return 1
+
     from automation_hub.gui import launch_gui
     launch_gui()
     return 0
