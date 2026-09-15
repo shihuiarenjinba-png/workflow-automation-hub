@@ -1,10 +1,14 @@
 __pycache__/
-*.py[cod]
+*.pyc
 .venv/
+build/
+dist/
+*.spec
+*.log
 .env
-.env.*
 credentials*.json
 client_secret*.json
 token*.json
-work/
+*.dpapi
+.state/
 logs/
