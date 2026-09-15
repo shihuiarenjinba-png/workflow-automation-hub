@@ -1,0 +1,17 @@
+{
+  "base_dir": "./work",
+  "log_path": "logs/workflow.jsonl",
+  "allow_hosts": ["www.googleapis.com"],
+  "workflow": [
+    {
+      "action": "write_text",
+      "path": "input/example.txt",
+      "text": "hello automation"
+    },
+    {
+      "action": "copy_file",
+      "src": "input/example.txt",
+      "dst": "output/example-copy.txt"
+    }
+  ]
+}
