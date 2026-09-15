@@ -40,7 +40,8 @@ class Runner:
         self.config = resolve_env(config)
         self.dry_run = dry_run
         self.base_dir = Path(self.config.get("base_dir", ".")).expanduser().resolve()
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        if not self.dry_run:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
         self.allowed_hosts = {str(x).lower() for x in self.config.get("allow_hosts", [])}
         self.log_path = Path(self.config.get("log_path", "logs/workflow.jsonl"))
         if not self.log_path.is_absolute():
