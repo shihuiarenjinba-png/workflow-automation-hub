@@ -62,6 +62,15 @@ class Runner:
         self._assert_under_base(path)
         return path
 
+    @staticmethod
+    def _check_destination(dst: Path, overwrite: bool) -> None:
+        if not dst.exists():
+            return
+        if dst.is_dir():
+            raise WorkflowError(f"Destination is a directory: {dst}")
+        if not overwrite:
+            raise WorkflowError(f"Destination already exists and overwrite=false: {dst}")
+
     def log(self, event: dict[str, Any]) -> None:
         event = {"ts": utc_now(), **event}
         print(json.dumps(event, ensure_ascii=False))
@@ -100,28 +109,36 @@ class Runner:
     def _copy_file(self, step: dict[str, Any]) -> None:
         src = self._path(str(step["src"]))
         dst = self._path(str(step["dst"]))
-        if not src.is_file():
-            raise WorkflowError(f"Source file does not exist: {src}")
+        overwrite = bool(step.get("overwrite", False))
         if self.dry_run:
             return
+        if not src.is_file():
+            raise WorkflowError(f"Source file does not exist: {src}")
+        self._check_destination(dst, overwrite)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
 
     def _move_file(self, step: dict[str, Any]) -> None:
         src = self._path(str(step["src"]))
         dst = self._path(str(step["dst"]))
-        if not src.is_file():
-            raise WorkflowError(f"Source file does not exist: {src}")
+        overwrite = bool(step.get("overwrite", False))
         if self.dry_run:
             return
+        if not src.is_file():
+            raise WorkflowError(f"Source file does not exist: {src}")
+        self._check_destination(dst, overwrite)
         dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists() and overwrite:
+            dst.unlink()
         shutil.move(str(src), str(dst))
 
     def _write_text(self, step: dict[str, Any]) -> None:
         dst = self._path(str(step["path"]))
         text = str(step.get("text", ""))
+        overwrite = bool(step.get("overwrite", False))
         if self.dry_run:
             return
+        self._check_destination(dst, overwrite)
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(text, encoding="utf-8")
 
