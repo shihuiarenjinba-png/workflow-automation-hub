@@ -1,20 +1,20 @@
 from __future__ import annotations
 
+import queue
 import threading
 import uuid
 from pathlib import Path
 from tkinter import BooleanVar, Listbox, StringVar, Tk, filedialog, messagebox
 from tkinter import ttk
-from typing import Callable, TypeVar
+from typing import Any, Callable, TypeVar
 
 from .blogger_automation import run_link_job
 from .google_blogger import GoogleBloggerConnector
 from .i18n import SUPPORTED_LOCALES, tr
-from .jobs import JobStore
+from .jobs import JobStore, JobStoreError
 from .models import BloggerLinkJob, ScheduleSpec
 from .scheduler import WindowsTaskScheduler
 from .settings import SettingsStore
-from .storage import DPAPITokenVault
 
 T = TypeVar("T")
 
@@ -25,7 +25,7 @@ class AutomationHubGUI:
         self.settings_store = SettingsStore()
         self.job_store = JobStore()
         self.scheduler = WindowsTaskScheduler()
-        self.vault = DPAPITokenVault()
+        self.google = GoogleBloggerConnector()
         self.settings = self.settings_store.load()
         self.locale = str(self.settings.get("locale", "ja"))
         if self.locale not in SUPPORTED_LOCALES:
@@ -34,12 +34,30 @@ class AutomationHubGUI:
         self.blog_display_to_id: dict[str, str] = {}
         self.selected_job_id: str | None = None
         self.busy = False
-        self.root.geometry("920x650")
-        self.root.minsize(820, 560)
+        self._async_queue: queue.Queue[tuple[str, Any, Callable[[Any], None] | None]] = queue.Queue()
+        self.root.geometry("940x670")
+        self.root.minsize(840, 580)
+        self._migrate_legacy_google_config()
         self.build_ui()
+        self.root.after(100, self._poll_async_queue)
 
     def t(self, key: str, **kwargs: object) -> str:
         return tr(self.locale, key, **kwargs)
+
+    def _migrate_legacy_google_config(self) -> None:
+        legacy = str(self.settings.pop("_legacy_google_credentials_file", "") or "").strip()
+        if not legacy or self.google.has_client_config():
+            return
+        try:
+            source = Path(legacy)
+            if source.is_file():
+                result = self.google.import_client_config(source)
+                self.settings["google_client_id_hint"] = result.metadata.client_id_hint
+                self.settings["google_project_id"] = result.metadata.project_id
+                self.settings_store.save(self.settings)
+        except Exception:
+            # Legacy migration must never prevent the GUI from starting.
+            pass
 
     def build_ui(self) -> None:
         for child in self.root.winfo_children():
@@ -68,26 +86,43 @@ class AutomationHubGUI:
         self._build_jobs_tab()
         self._build_schedule_tab()
         self._build_compliance_tab()
-        self.refresh_jobs()
+        self.refresh_jobs(show_error=False)
+
+    def _google_status_text(self) -> str:
+        client = self.t("oauth_imported") if self.google.has_client_config() else self.t("oauth_not_imported")
+        token = self.t("status_connected") if self.google.has_token() else self.t("status_not_connected")
+        return f"{self.t('oauth_config_status')}: {client}    {self.t('google_auth_status')}: {token}"
+
+    def _client_info_text(self) -> str:
+        if not self.google.has_client_config():
+            return ""
+        try:
+            metadata = self.google.client_metadata()
+            project = metadata.project_id or "-"
+            return self.t("oauth_client_info", client_id=metadata.client_id_hint, project_id=project)
+        except Exception as exc:
+            return f"{self.t('oauth_config_invalid')}: {exc}"
 
     def _build_google_tab(self) -> None:
         frame = self.google_tab
-        self.credentials_var = StringVar(value=str(self.settings.get("google_credentials_file", "")))
-        ttk.Label(frame, text=self.t("google_help"), wraplength=820).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 16))
-        ttk.Label(frame, text=self.t("oauth_file")).grid(row=1, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.credentials_var, width=75).grid(row=1, column=1, sticky="ew", padx=8)
-        ttk.Button(frame, text=self.t("browse"), command=self.choose_credentials).grid(row=1, column=2)
-        frame.columnconfigure(1, weight=1)
+        ttk.Label(frame, text=self.t("google_help"), wraplength=850, justify="left").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 14)
+        )
         buttons = ttk.Frame(frame)
-        buttons.grid(row=2, column=0, columnspan=3, sticky="w", pady=16)
+        buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 14))
+        ttk.Button(buttons, text=self.t("import_oauth"), command=self.choose_credentials).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text=self.t("authenticate"), command=self.authenticate_google).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text=self.t("connection_test"), command=self.test_google).pack(side="left", padx=(0, 8))
         ttk.Button(buttons, text=self.t("load_blogs"), command=self.load_blogs).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("disconnect"), command=self.disconnect_google).pack(side="left")
-        self.google_status_var = StringVar(value=self.t("status_connected") if self.vault.exists() else self.t("status_not_connected"))
-        ttk.Label(frame, textvariable=self.google_status_var).grid(row=3, column=0, columnspan=3, sticky="w")
+        ttk.Button(buttons, text=self.t("disconnect"), command=self.disconnect_google).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text=self.t("remove_oauth_config"), command=self.remove_google_config).pack(side="left")
+
+        self.google_status_var = StringVar(value=self._google_status_text())
+        ttk.Label(frame, textvariable=self.google_status_var, wraplength=850).grid(row=2, column=0, columnspan=2, sticky="w")
+        self.client_info_var = StringVar(value=self._client_info_text())
+        ttk.Label(frame, textvariable=self.client_info_var, wraplength=850).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.blog_text_var = StringVar(value="")
-        ttk.Label(frame, textvariable=self.blog_text_var, wraplength=820).grid(row=4, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        ttk.Label(frame, textvariable=self.blog_text_var, wraplength=850).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _build_jobs_tab(self) -> None:
         outer = self.jobs_tab
@@ -108,7 +143,10 @@ class AutomationHubGUI:
         self.link_var = StringVar()
         self.max_posts_var = StringVar(value="50")
         self.enabled_var = BooleanVar(value=True)
-        fields = [("job_name", self.job_name_var), ("blog", self.blog_var), ("target_text", self.target_var), ("anchor_text", self.anchor_var), ("link_url", self.link_var), ("max_posts", self.max_posts_var)]
+        fields = [
+            ("job_name", self.job_name_var), ("blog", self.blog_var), ("target_text", self.target_var),
+            ("anchor_text", self.anchor_var), ("link_url", self.link_var), ("max_posts", self.max_posts_var),
+        ]
         for row, (key, variable) in enumerate(fields):
             ttk.Label(right, text=self.t(key)).grid(row=row, column=0, sticky="w", pady=5)
             if key == "blog":
@@ -130,22 +168,31 @@ class AutomationHubGUI:
         self.schedule_job_var = StringVar()
         self.schedule_kind_var = StringVar(value=self.t("daily"))
         self.schedule_time_var = StringVar(value="08:00")
-        self.weekday_vars = {day: BooleanVar(value=day in {"MON", "TUE", "WED", "THU", "FRI"}) for day in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]}
+        self.weekday_vars = {
+            day: BooleanVar(value=day in {"MON", "TUE", "WED", "THU", "FRI"})
+            for day in ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+        }
         ttk.Label(frame, text=self.t("jobs")).grid(row=0, column=0, sticky="w", pady=6)
         self.schedule_job_combo = ttk.Combobox(frame, textvariable=self.schedule_job_var, state="readonly", width=52)
         self.schedule_job_combo.grid(row=0, column=1, sticky="w", padx=8)
         self.schedule_job_combo.bind("<<ComboboxSelected>>", self.on_schedule_job_select)
         ttk.Label(frame, text=self.t("schedule_kind")).grid(row=1, column=0, sticky="w", pady=6)
-        self.schedule_kind_combo = ttk.Combobox(frame, textvariable=self.schedule_kind_var, state="readonly", values=[self.t("daily"), self.t("weekly"), self.t("logon")], width=25)
+        self.schedule_kind_combo = ttk.Combobox(
+            frame, textvariable=self.schedule_kind_var, state="readonly",
+            values=[self.t("daily"), self.t("weekly"), self.t("logon")], width=25,
+        )
         self.schedule_kind_combo.grid(row=1, column=1, sticky="w", padx=8)
         ttk.Label(frame, text=self.t("time")).grid(row=2, column=0, sticky="w", pady=6)
         ttk.Entry(frame, textvariable=self.schedule_time_var, width=10).grid(row=2, column=1, sticky="w", padx=8)
         ttk.Label(frame, text=self.t("weekdays")).grid(row=3, column=0, sticky="nw", pady=6)
         weekdays_frame = ttk.Frame(frame)
         weekdays_frame.grid(row=3, column=1, sticky="w", padx=8)
-        names = [("MON", "monday"), ("TUE", "tuesday"), ("WED", "wednesday"), ("THU", "thursday"), ("FRI", "friday"), ("SAT", "saturday"), ("SUN", "sunday")]
-        for i, (day, key) in enumerate(names):
-            ttk.Checkbutton(weekdays_frame, text=self.t(key), variable=self.weekday_vars[day]).grid(row=0, column=i, padx=(0, 6))
+        names = [
+            ("MON", "monday"), ("TUE", "tuesday"), ("WED", "wednesday"), ("THU", "thursday"),
+            ("FRI", "friday"), ("SAT", "saturday"), ("SUN", "sunday"),
+        ]
+        for index, (day, key) in enumerate(names):
+            ttk.Checkbutton(weekdays_frame, text=self.t(key), variable=self.weekday_vars[day]).grid(row=0, column=index, padx=(0, 6))
         buttons = ttk.Frame(frame)
         buttons.grid(row=4, column=0, columnspan=2, sticky="w", pady=20)
         ttk.Button(buttons, text=self.t("save"), command=self.save_schedule_to_job).pack(side="left", padx=(0, 8))
@@ -156,8 +203,11 @@ class AutomationHubGUI:
         ttk.Label(frame, textvariable=self.scheduler_status_var, wraplength=800).grid(row=5, column=0, columnspan=2, sticky="w")
 
     def _build_compliance_tab(self) -> None:
-        text = "\n\n".join([self.t("free_setup"), self.t("review_date"), self.t("blogger_compliance"), self.t("scheduler_compliance"), self.t("compliance_note")])
-        ttk.Label(self.compliance_tab, text=text, wraplength=820, justify="left").pack(anchor="w")
+        text = "\n\n".join([
+            self.t("supported_api_note"), self.t("free_setup"), self.t("review_date"), self.t("blogger_compliance"),
+            self.t("scheduler_compliance"), self.t("compliance_note"),
+        ])
+        ttk.Label(self.compliance_tab, text=text, wraplength=850, justify="left").pack(anchor="w")
 
     def on_language_change(self, _event: object = None) -> None:
         self.locale = "ja" if self.language_var.get() == "日本語" else "en"
@@ -166,66 +216,77 @@ class AutomationHubGUI:
         self.build_ui()
 
     def choose_credentials(self) -> None:
-        path = filedialog.askopenfilename(title=self.t("select_credentials"), filetypes=[("JSON", "*.json"), ("All files", "*.*")])
-        if path:
-            self.credentials_var.set(path)
-            self.settings["google_credentials_file"] = path
+        path = filedialog.askopenfilename(
+            title=self.t("select_credentials"),
+            filetypes=[("Google OAuth JSON", "*.json"), ("JSON", "*.json")],
+        )
+        if not path:
+            return
+        try:
+            result = self.google.import_client_config(Path(path))
+            self.settings["google_client_id_hint"] = result.metadata.client_id_hint
+            self.settings["google_project_id"] = result.metadata.project_id
             self.settings_store.save(self.settings)
+            self.google_status_var.set(self._google_status_text())
+            self.client_info_var.set(self._client_info_text())
+            key = "oauth_imported_token_reset" if result.token_reset else "oauth_imported_ok"
+            messagebox.showinfo(self.t("info_title"), self.t(key))
+        except Exception as exc:
+            messagebox.showerror(self.t("error_title"), str(exc))
 
-    def _connector(self) -> GoogleBloggerConnector:
-        value = self.credentials_var.get().strip() if hasattr(self, "credentials_var") else str(self.settings.get("google_credentials_file", ""))
-        if not value:
-            raise ValueError(self.t("invalid_fields"))
-        path = Path(value)
-        self.settings["google_credentials_file"] = str(path)
-        self.settings_store.save(self.settings)
-        return GoogleBloggerConnector(path, self.vault)
+    def _set_busy(self, value: bool) -> None:
+        self.busy = value
+        self.root.config(cursor="watch" if value else "")
 
     def run_async(self, func: Callable[[], T], on_success: Callable[[T], None]) -> None:
         if self.busy:
             return
-        self.busy = True
-        self.root.config(cursor="watch")
+        self._set_busy(True)
+
         def worker() -> None:
             try:
                 value = func()
             except Exception as exc:
-                self.root.after(0, lambda: self._async_error(exc))
+                self._async_queue.put(("error", exc, None))
             else:
-                self.root.after(0, lambda: self._async_success(value, on_success))
+                self._async_queue.put(("ok", value, on_success))
+
         threading.Thread(target=worker, daemon=True).start()
 
-    def _async_error(self, exc: Exception) -> None:
-        self.busy = False
-        self.root.config(cursor="")
-        messagebox.showerror(self.t("error_title"), str(exc))
-
-    def _async_success(self, value: T, callback: Callable[[T], None]) -> None:
-        self.busy = False
-        self.root.config(cursor="")
-        callback(value)
+    def _poll_async_queue(self) -> None:
+        try:
+            while True:
+                kind, value, callback = self._async_queue.get_nowait()
+                self._set_busy(False)
+                if kind == "error":
+                    messagebox.showerror(self.t("error_title"), str(value))
+                elif callback is not None:
+                    try:
+                        callback(value)
+                    except Exception as exc:
+                        messagebox.showerror(self.t("error_title"), str(exc))
+        except queue.Empty:
+            pass
+        self.root.after(100, self._poll_async_queue)
 
     def authenticate_google(self) -> None:
-        connector = self._connector()
-        self.run_async(lambda: connector.authenticate(self.locale), lambda _v: self._after_auth())
+        self.run_async(lambda: self.google.authenticate(self.locale), lambda _value: self._after_auth())
 
     def _after_auth(self) -> None:
-        self.google_status_var.set(self.t("status_connected"))
+        self.google_status_var.set(self._google_status_text())
         messagebox.showinfo(self.t("info_title"), self.t("auth_completed"))
         self.load_blogs()
 
     def test_google(self) -> None:
-        connector = self._connector()
-        self.run_async(connector.check_connection, lambda result: self._after_google_test(result.blogs))
+        self.run_async(self.google.check_connection, lambda result: self._after_google_test(result.blogs))
 
     def _after_google_test(self, blogs: list[dict[str, str]]) -> None:
         self._set_blogs(blogs)
-        self.google_status_var.set(self.t("status_ok"))
+        self.google_status_var.set(self._google_status_text())
         messagebox.showinfo(self.t("info_title"), self.t("google_connected"))
 
     def load_blogs(self) -> None:
-        connector = self._connector()
-        self.run_async(connector.list_blogs, self._after_blogs_loaded)
+        self.run_async(self.google.list_blogs, self._after_blogs_loaded)
 
     def _after_blogs_loaded(self, blogs: list[dict[str, str]]) -> None:
         self._set_blogs(blogs)
@@ -245,12 +306,42 @@ class AutomationHubGUI:
     def disconnect_google(self) -> None:
         if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_disconnect")):
             return
-        self.vault.delete()
-        self.google_status_var.set(self.t("status_not_connected"))
-        messagebox.showinfo(self.t("info_title"), self.t("google_disconnected"))
+        try:
+            self.google.disconnect()
+            self.google_status_var.set(self._google_status_text())
+            messagebox.showinfo(self.t("info_title"), self.t("google_disconnected"))
+        except Exception as exc:
+            messagebox.showerror(self.t("error_title"), str(exc))
 
-    def refresh_jobs(self) -> None:
-        jobs = self.job_store.load_all()
+    def remove_google_config(self) -> None:
+        if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_remove_oauth")):
+            return
+        try:
+            self.google.remove_client_config()
+            self.settings["google_client_id_hint"] = ""
+            self.settings["google_project_id"] = ""
+            self.settings_store.save(self.settings)
+            self.google_status_var.set(self._google_status_text())
+            self.client_info_var.set("")
+            self.blogs = []
+            self.blog_display_to_id = {}
+            if hasattr(self, "blog_combo"):
+                self.blog_combo["values"] = []
+            messagebox.showinfo(self.t("info_title"), self.t("oauth_removed"))
+        except Exception as exc:
+            messagebox.showerror(self.t("error_title"), str(exc))
+
+    def refresh_jobs(self, *, show_error: bool = True) -> None:
+        try:
+            jobs = self.job_store.load_all()
+        except JobStoreError as exc:
+            if hasattr(self, "jobs_list"):
+                self.jobs_list.delete(0, "end")
+            if hasattr(self, "schedule_job_combo"):
+                self.schedule_job_combo["values"] = []
+            if show_error:
+                messagebox.showerror(self.t("error_title"), str(exc))
+            return
         if hasattr(self, "jobs_list"):
             self.jobs_list.delete(0, "end")
             for job in jobs:
@@ -280,7 +371,10 @@ class AutomationHubGUI:
         if not selection:
             return
         self.selected_job_id = self._id_from_display(self.jobs_list.get(selection[0]))
-        self.load_job(self.selected_job_id)
+        try:
+            self.load_job(self.selected_job_id)
+        except Exception as exc:
+            messagebox.showerror(self.t("error_title"), str(exc))
 
     def load_job(self, job_id: str) -> None:
         job = self.job_store.get(job_id)
@@ -296,22 +390,29 @@ class AutomationHubGUI:
     def _form_job(self) -> BloggerLinkJob:
         blog_display = self.blog_var.get().strip()
         blog_id = self.blog_display_to_id.get(blog_display, blog_display)
-        if not blog_id or not self.target_var.get().strip() or not self.link_var.get().strip() or not self.job_name_var.get().strip():
-            raise ValueError(self.t("invalid_fields"))
-        max_posts = int(self.max_posts_var.get())
         job_id = self.selected_job_id or uuid.uuid4().hex[:12]
         try:
             schedule = self.job_store.get(job_id).schedule
         except KeyError:
             schedule = ScheduleSpec()
-        return BloggerLinkJob(id=job_id, name=self.job_name_var.get().strip(), blog_id=blog_id, target_text=self.target_var.get().strip(), link_url=self.link_var.get().strip(), anchor_text=self.anchor_var.get().strip() or self.target_var.get().strip(), max_posts=max_posts, enabled=self.enabled_var.get(), schedule=schedule)
+        return BloggerLinkJob(
+            id=job_id,
+            name=self.job_name_var.get(),
+            blog_id=blog_id,
+            target_text=self.target_var.get(),
+            link_url=self.link_var.get(),
+            anchor_text=self.anchor_var.get() or self.target_var.get(),
+            max_posts=int(self.max_posts_var.get()),
+            enabled=self.enabled_var.get(),
+            schedule=schedule,
+        )
 
     def save_job(self) -> None:
         try:
             job = self._form_job()
             self.job_store.upsert(job)
             self.selected_job_id = job.id
-            self.refresh_jobs()
+            self.refresh_jobs(show_error=False)
             messagebox.showinfo(self.t("info_title"), self.t("saved"))
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc))
@@ -331,7 +432,7 @@ class AutomationHubGUI:
             self.job_store.delete(job_id)
             self.selected_job_id = None
             self.new_job()
-            self.refresh_jobs()
+            self.refresh_jobs(show_error=False)
             messagebox.showinfo(self.t("info_title"), self.t("deleted"))
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc))
@@ -344,17 +445,25 @@ class AutomationHubGUI:
             return
         try:
             job = self.job_store.get(self.selected_job_id)
-            connector = self._connector()
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc))
             return
-        self.run_async(lambda: run_link_job(connector, job, dry_run=dry_run), lambda result: messagebox.showinfo(self.t("info_title"), self.t("dry_result" if dry_run else "run_result", scanned=result.scanned, changed=result.changed)))
+        self.run_async(
+            lambda: run_link_job(self.google, job, dry_run=dry_run),
+            lambda result: messagebox.showinfo(
+                self.t("info_title"),
+                self.t("dry_result" if dry_run else "run_result", scanned=result.scanned, changed=result.changed),
+            ),
+        )
 
     def on_schedule_job_select(self, _event: object = None) -> None:
         display = self.schedule_job_var.get()
         if display:
-            self.selected_job_id = self._id_from_display(display)
-            self._load_schedule_fields(self.job_store.get(self.selected_job_id))
+            try:
+                self.selected_job_id = self._id_from_display(display)
+                self._load_schedule_fields(self.job_store.get(self.selected_job_id))
+            except Exception as exc:
+                messagebox.showerror(self.t("error_title"), str(exc))
 
     def _load_schedule_fields(self, job: BloggerLinkJob) -> None:
         if not hasattr(self, "schedule_kind_var"):
@@ -368,7 +477,11 @@ class AutomationHubGUI:
 
     def _schedule_from_fields(self) -> ScheduleSpec:
         reverse = {self.t("daily"): "daily", self.t("weekly"): "weekly", self.t("logon"): "logon"}
-        return ScheduleSpec(kind=reverse.get(self.schedule_kind_var.get(), "daily"), time=self.schedule_time_var.get().strip(), weekdays=[day for day, var in self.weekday_vars.items() if var.get()])
+        return ScheduleSpec(
+            kind=reverse.get(self.schedule_kind_var.get(), "daily"),
+            time=self.schedule_time_var.get().strip(),
+            weekdays=[day for day, var in self.weekday_vars.items() if var.get()],
+        )
 
     def save_schedule_to_job(self) -> BloggerLinkJob | None:
         if not self.selected_job_id:
@@ -382,7 +495,7 @@ class AutomationHubGUI:
             job = self.job_store.get(self.selected_job_id)
             job.schedule = self._schedule_from_fields()
             self.job_store.upsert(job)
-            self.refresh_jobs()
+            self.refresh_jobs(show_error=False)
             messagebox.showinfo(self.t("info_title"), self.t("saved"))
             return job
         except Exception as exc:
@@ -411,7 +524,9 @@ class AutomationHubGUI:
 
     def test_scheduler(self) -> None:
         check = self.scheduler.check()
-        self.scheduler_status_var.set(self.t("status_scheduler_ok") if check.ok else f"{self.t('status_scheduler_ng')}: {check.detail}")
+        self.scheduler_status_var.set(
+            self.t("status_scheduler_ok") if check.ok else f"{self.t('status_scheduler_ng')}: {check.detail}"
+        )
 
 
 def launch_gui() -> None:
