@@ -10,6 +10,7 @@ $python = Join-Path $PWD ".venv\Scripts\python.exe"
 & $python -m pip install -r requirements-build.txt
 & $python -m pip check
 & $python -m unittest discover -s tests -v
+& $python desktop_app.py --self-test
 
 & $python -m PyInstaller `
     --noconfirm `
@@ -24,6 +25,11 @@ $python = Join-Path $PWD ".venv\Scripts\python.exe"
 
 if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) {
     throw "EXE was not created / EXEが作成されませんでした"
+}
+
+& ".\dist\WorkflowAutomationHub.exe" --self-test
+if ($LASTEXITCODE -ne 0) {
+    throw "Packaged EXE self-test failed / EXE自己診断に失敗しました"
 }
 
 Write-Host "Build complete / ビルド完了: dist\WorkflowAutomationHub.exe"
