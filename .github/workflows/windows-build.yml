@@ -42,8 +42,8 @@ jobs:
       - name: Packaged EXE self-test / EXE自己診断
         shell: pwsh
         run: |
-          & .\dist\WorkflowAutomationHub.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged EXE self-test failed" }
+          $process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged EXE self-test failed with exit code $($process.ExitCode)" }
       - name: Upload EXE / EXEを保存
         uses: actions/upload-artifact@v4
         with:
