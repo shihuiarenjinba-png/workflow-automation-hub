@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html as html_lib
 import json
 import os
 import re
@@ -7,11 +8,12 @@ import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup
 
 from .audit import AuditLogger
 from .locks import JobExecutionLock
@@ -51,40 +53,96 @@ def validate_http_url(url: str) -> None:
         raise BloggerAutomationError("Credentials are not allowed in link URLs / リンクURLに認証情報は含められません")
 
 
+class _SafeTextLocator(HTMLParser):
+    """Locate plain-text matches without rewriting or normalizing the source HTML."""
+
+    IGNORED = {"a", "script", "style", "code", "pre", "textarea"}
+
+    def __init__(self, source: str, target: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.source = source
+        self.target = target
+        self.ignored_depth = 0
+        self.match_start: int | None = None
+        self.line_starts = [0]
+        for index, char in enumerate(source):
+            if char == "\n":
+                self.line_starts.append(index + 1)
+
+    def _absolute_position(self) -> int | None:
+        line, offset = self.getpos()
+        if line < 1 or line > len(self.line_starts):
+            return None
+        position = self.line_starts[line - 1] + offset
+        if not 0 <= position <= len(self.source):
+            return None
+        return position
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() in self.IGNORED:
+            self.ignored_depth += 1
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        return
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self.IGNORED and self.ignored_depth > 0:
+            self.ignored_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.match_start is not None or self.ignored_depth > 0:
+            return
+        index = data.find(self.target)
+        if index < 0:
+            return
+        start = self._absolute_position()
+        if start is None:
+            return
+        # Do not guess when HTMLParser's view does not map exactly to the raw
+        # source. This deliberately favors a safe no-op over changing the wrong
+        # bytes in the Blogger post.
+        if self.source[start:start + len(data)] != data:
+            return
+        self.match_start = start + index
+
+
+def _find_safe_text_match(source: str, target: str) -> int | None:
+    locator = _SafeTextLocator(source, target)
+    try:
+        locator.feed(source)
+        locator.close()
+    except Exception as exc:
+        raise BloggerAutomationError(f"Could not parse Blogger HTML / Blogger HTMLを解析できません: {exc}") from exc
+    return locator.match_start
+
+
 def insert_link_once(html: str, target_text: str, link_url: str, anchor_text: str | None = None) -> LinkInsertionResult:
     if not target_text:
         raise BloggerAutomationError("target_text must not be empty / 検索文字は空にできません")
     validate_http_url(link_url)
     anchor_text = anchor_text or target_text
-    soup = BeautifulSoup(html or "", "html.parser")
+    source = html or ""
 
+    # BeautifulSoup is used only for read-only duplicate detection. The output
+    # HTML is never serialized from the parsed tree, so unrelated Blogger HTML
+    # remains byte-for-byte unchanged.
+    try:
+        soup = BeautifulSoup(source, "html.parser")
+    except Exception as exc:
+        raise BloggerAutomationError(f"Could not parse Blogger HTML / Blogger HTMLを解析できません: {exc}") from exc
     for anchor in soup.find_all("a", href=True):
         if str(anchor.get("href", "")) == link_url:
-            return LinkInsertionResult(str(soup), False, "link_already_present")
+            return LinkInsertionResult(source, False, "link_already_present")
 
-    ignored_ancestors = {"a", "script", "style", "code", "pre", "textarea"}
-    for text_node in soup.find_all(string=True):
-        if any(getattr(parent, "name", None) in ignored_ancestors for parent in text_node.parents):
-            continue
-        text = str(text_node)
-        index = text.find(target_text)
-        if index < 0:
-            continue
-
-        before = text[:index]
-        after = text[index + len(target_text):]
-        new_nodes: list[Any] = []
-        if before:
-            new_nodes.append(NavigableString(before))
-        link = soup.new_tag("a", href=link_url)
-        link.string = anchor_text
-        new_nodes.append(link)
-        if after:
-            new_nodes.append(NavigableString(after))
-        text_node.replace_with(*new_nodes)
-        return LinkInsertionResult(str(soup), True, "inserted")
-
-    return LinkInsertionResult(str(soup), False, "target_not_found")
+    start = _find_safe_text_match(source, target_text)
+    if start is None:
+        return LinkInsertionResult(source, False, "target_not_found")
+    end = start + len(target_text)
+    safe_href = html_lib.escape(link_url, quote=True)
+    safe_anchor = html_lib.escape(anchor_text, quote=False)
+    link = f'<a href="{safe_href}">{safe_anchor}</a>'
+    changed = source[:start] + link + source[end:]
+    return LinkInsertionResult(changed, True, "inserted")
 
 
 def _safe_component(value: str) -> str:
