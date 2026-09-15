@@ -32,3 +32,9 @@ def audit_log_path() -> Path:
     path = app_data_dir() / "logs" / "audit.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def blogger_backup_dir() -> Path:
+    path = app_data_dir() / "backups" / "blogger"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
