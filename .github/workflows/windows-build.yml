@@ -32,11 +32,18 @@ jobs:
         run: python -m pip check
       - name: Unit tests / ユニットテスト
         run: python -m unittest discover -s tests -v
+      - name: Source self-test / ソース自己診断
+        run: python desktop_app.py --self-test
       - name: Build EXE / EXE作成
         shell: pwsh
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name WorkflowAutomationHub --add-data "resources;resources" --collect-all googleapiclient --collect-all google_auth_oauthlib desktop_app.py
           if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) { throw "EXE was not created" }
+      - name: Packaged EXE self-test / EXE自己診断
+        shell: pwsh
+        run: |
+          & .\dist\WorkflowAutomationHub.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged EXE self-test failed" }
       - name: Upload EXE / EXEを保存
         uses: actions/upload-artifact@v4
         with:
