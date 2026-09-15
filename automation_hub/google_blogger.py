@@ -42,7 +42,6 @@ class GoogleBloggerConnector:
             port=0,
             open_browser=True,
             access_type="offline",
-            include_granted_scopes="true",
             prompt="consent",
             success_message=success,
         )
