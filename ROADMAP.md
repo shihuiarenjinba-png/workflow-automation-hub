@@ -11,9 +11,11 @@
 - deterministic internal-link insertion
 - duplicate-link prevention
 - Dry Run before remote write
+- local original-post backup before every live Blogger patch
 - audit log under LocalAppData
 - Windows Task Scheduler Connection Test
 - Daily / Weekly / Windows logon scheduling
+- `LIMITED` + interactive-user (`/IT`) scheduling
 - fixed runner + sanitized job ID only
 - Windows GitHub Actions test + PyInstaller EXE build
 
@@ -24,6 +26,8 @@
 - unit tests
 - Windows dependency installation
 - Windows unit-test execution
+- Windows DPAPI encrypt/decrypt round-trip test
+- Blogger backup-before-patch regression tests
 - PyInstaller EXE build
 - build artifact generation
 - secret-file `.gitignore` rules
@@ -34,6 +38,7 @@
 - 実際のGoogle OAuth Desktop client JSONで接続確認
 - ユーザー自身のBloggerでDry Run
 - テスト記事1件でcontrolled live update
+- 生成されたローカルbackupの内容確認
 - Windows 10 / Windows 11 smoke test
 - malware / AV scan
 - Authenticode signing before commercial distribution
@@ -43,10 +48,10 @@
 ## v0.2 — Safety & Preview
 
 - 記事ごとの変更前/変更後preview
-- Blogger記事の事前backup/export
+- backup一覧・GUI restore support
 - per-post allow/skip selection
 - richer deterministic match rules
-- rollback support where practical
+- rollback workflow
 
 ## v0.3 — Additional Connectors
 
