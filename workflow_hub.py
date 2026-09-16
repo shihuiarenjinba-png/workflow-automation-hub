@@ -17,6 +17,13 @@ class WorkflowError(RuntimeError):
     pass
 
 
+class _RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so an allowlisted URL cannot escape to another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        return None
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -164,16 +171,18 @@ class Runner:
             headers.setdefault("Content-Type", "application/json")
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         timeout = float(step.get("timeout_seconds", 30))
+        opener = urllib.request.build_opener(_RejectRedirectHandler())
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with opener.open(request, timeout=timeout) as response:
+                final = urllib.parse.urlparse(response.geturl())
+                final_host = (final.hostname or "").lower()
+                if final.scheme != "https" or final_host != host:
+                    raise WorkflowError("HTTP response URL changed unexpectedly")
                 body = response.read(1_000_000)
-                self.log({
-                    "event": "http_response",
-                    "status": response.status,
-                    "host": host,
-                    "bytes": len(body),
-                })
+                self.log({"event": "http_response", "status": response.status, "host": host, "bytes": len(body)})
         except urllib.error.HTTPError as exc:
+            if 300 <= exc.code < 400:
+                raise WorkflowError(f"Redirect responses are not allowed for {host}") from exc
             raise WorkflowError(f"HTTP {exc.code} from {host}") from exc
         except urllib.error.URLError as exc:
             raise WorkflowError(f"Request failed for {host}: {exc.reason}") from exc
