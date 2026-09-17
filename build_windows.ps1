@@ -55,6 +55,13 @@ foreach ($EvidenceFile in $EvidenceFiles) {
     "$Hash  $([IO.Path]::GetFileName($EvidenceFile))" | Set-Content -Encoding ascii "$EvidenceFile.sha256.txt"
 }
 
+$SourceCommit = (& git rev-parse HEAD).Trim()
+& powershell -NoProfile -ExecutionPolicy Bypass -File ".\package_release.ps1" -Mode RC -SourceCommit $SourceCommit
+if ($LASTEXITCODE -ne 0) {
+    throw "RC ZIP packaging/verification failed / RC ZIP作成・再検証に失敗しました"
+}
+
 Write-Host "Build complete / ビルド完了: dist\WorkflowAutomationHub.exe"
+Write-Host "Verified RC ZIP / 検証済みRC ZIP: release\WorkflowAutomationHub-v0.1.0-Windows-x64-RC.zip"
 Write-Host "Dependency review evidence / 依存関係レビュー証跡: dist\SBOM.spdx.json, dist\THIRD_PARTY_NOTICES_REVIEW.txt, dist\build-dependencies.lock.txt"
-Write-Host "NOTE: Product LICENSE and manual third-party license/NOTICE review are still required before sales release."
+Write-Host "NOTE: Sales-mode package still requires formal product LICENSE, final third-party notices, exact-commit manual acceptance, and owner approval."
