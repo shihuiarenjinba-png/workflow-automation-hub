@@ -1,1 +1,90 @@
-name: Windows build / Windowsビルド\n\non:\n  push:\n    branches:\n      - main\n  pull_request:\n  workflow_dispatch:\n\nconcurrency:\n  group: windows-build-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\npermissions:\n  contents: read\n\njobs:\n  test-and-build:\n    runs-on: windows-latest\n    steps:\n      - name: Checkout exact source / 正確なソースをチェックアウト\n        uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n      - name: Set up Python / Python設定\n        uses: actions/setup-python@v5\n        with:\n          python-version: '3.12'\n      - name: Install dependencies / 依存関係\n        run: |\n          python -m pip install --upgrade pip\n          python -m pip install -r requirements-build.txt\n      - name: Verify dependencies / 依存整合性\n        run: python -m pip check\n      - name: Unit tests / ユニットテスト\n        run: python -m unittest discover -s tests -v\n      - name: Source self-test / ソース自己診断\n        run: python desktop_app.py --self-test\n      - name: Source diagnostics privacy check / 診断レポート確認\n        shell: pwsh\n        run: |\n          python desktop_app.py --diagnose source_support_report.json\n          if ($LASTEXITCODE -ne 0) { throw "Source diagnostics failed" }\n          python -c "import json; p=json.load(open('source_support_report.json', encoding='utf-8')); assert p['overall_ok']; assert not any(p['privacy'][k] for k in ['contains_oauth_token','contains_client_secret','contains_username','contains_full_paths'])"\n      - name: Generate dependency evidence / 依存関係証跡\n        shell: pwsh\n        run: |\n          python generate_dependency_evidence.py --requirements requirements.txt --out-dir dist\n          if ($LASTEXITCODE -ne 0) { throw "Dependency evidence generation failed" }\n          python -m pip freeze --all | Set-Content -Encoding utf8 "dist\build-dependencies.lock.txt"\n          python -c "import json; p=json.load(open(r'dist/SBOM.spdx.json', encoding='utf-8')); assert p['spdxVersion']=='SPDX-2.3'; assert len(p['packages']) > 0"\n          if ($LASTEXITCODE -ne 0) { throw "SBOM validation failed" }\n          $files = @('dist\SBOM.spdx.json','dist\THIRD_PARTY_NOTICES_REVIEW.txt','dist\build-dependencies.lock.txt')\n          foreach ($file in $files) {\n            if (-not (Test-Path $file) -or (Get-Item $file).Length -le 0) { throw "Missing dependency evidence: $file" }\n            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()\n            "$hash  $([IO.Path]::GetFileName($file))" | Set-Content -Encoding ascii "$file.sha256.txt"\n          }\n      - name: Build EXE / EXE作成\n        shell: pwsh\n        run: |\n          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WorkflowAutomationHub --add-data "resources;resources" --collect-all googleapiclient --collect-all google_auth_oauthlib desktop_app.py\n          if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) { throw "EXE was not created" }\n      - name: Packaged EXE self-test / EXE自己診断\n        shell: pwsh\n        run: |\n          $process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru\n          if ($process.ExitCode -ne 0) { throw "Packaged EXE self-test failed with exit code $($process.ExitCode)" }\n      - name: Build and re-verify RC ZIP / RC ZIP作成・再検証\n        shell: pwsh\n        env:\n          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}\n        run: |\n          .\package_release.ps1 -Mode RC -SourceCommit "$env:SOURCE_COMMIT"\n          if ($LASTEXITCODE -ne 0) { throw "RC package verification failed" }\n      - name: Upload RC evidence / RC証跡を保存\n        uses: actions/upload-artifact@v4\n        with:\n          name: WorkflowAutomationHub-Windows\n          path: |\n            dist/WorkflowAutomationHub.exe\n            dist/SBOM.spdx.json\n            dist/SBOM.spdx.json.sha256.txt\n            dist/THIRD_PARTY_NOTICES_REVIEW.txt\n            dist/THIRD_PARTY_NOTICES_REVIEW.txt.sha256.txt\n            dist/build-dependencies.lock.txt\n            dist/build-dependencies.lock.txt.sha256.txt\n            release/WorkflowAutomationHub-v0.1.0-Windows-x64-RC.zip\n            release/WorkflowAutomationHub-v0.1.0-Windows-x64-RC.zip.sha256.txt\n          if-no-files-found: error\n
+name: Windows build / Windowsビルド
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact source / 正確なソースをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python / Python設定
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies / 依存関係
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Verify dependencies / 依存整合性
+        run: python -m pip check
+      - name: Unit tests / ユニットテスト
+        run: python -m unittest discover -s tests -v
+      - name: Source self-test / ソース自己診断
+        run: python desktop_app.py --self-test
+      - name: Source diagnostics privacy check / 診断レポート確認
+        shell: pwsh
+        run: |
+          python desktop_app.py --diagnose source_support_report.json
+          if ($LASTEXITCODE -ne 0) { throw "Source diagnostics failed" }
+          python -c "import json; p=json.load(open('source_support_report.json', encoding='utf-8')); assert p['overall_ok']; assert not any(p['privacy'][k] for k in ['contains_oauth_token','contains_client_secret','contains_username','contains_full_paths'])"
+      - name: Generate dependency evidence / 依存関係証跡
+        shell: pwsh
+        run: |
+          python generate_dependency_evidence.py --requirements requirements.txt --out-dir dist
+          if ($LASTEXITCODE -ne 0) { throw "Dependency evidence generation failed" }
+          python -m pip freeze --all | Set-Content -Encoding utf8 "dist\build-dependencies.lock.txt"
+          python -c "import json; p=json.load(open(r'dist/SBOM.spdx.json', encoding='utf-8')); assert p['spdxVersion']=='SPDX-2.3'; assert len(p['packages']) > 0"
+          if ($LASTEXITCODE -ne 0) { throw "SBOM validation failed" }
+          $files = @('dist\SBOM.spdx.json','dist\THIRD_PARTY_NOTICES_REVIEW.txt','dist\build-dependencies.lock.txt')
+          foreach ($file in $files) {
+            if (-not (Test-Path $file) -or (Get-Item $file).Length -le 0) { throw "Missing dependency evidence: $file" }
+            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($file))" | Set-Content -Encoding ascii "$file.sha256.txt"
+          }
+      - name: Build EXE / EXE作成
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WorkflowAutomationHub --add-data "resources;resources" --collect-all googleapiclient --collect-all google_auth_oauthlib desktop_app.py
+          if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) { throw "EXE was not created" }
+      - name: Packaged EXE self-test / EXE自己診断
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged EXE self-test failed with exit code $($process.ExitCode)" }
+      - name: Build and re-verify RC ZIP / RC ZIP作成・再検証
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          .\package_release.ps1 -Mode RC -SourceCommit "$env:SOURCE_COMMIT"
+          if ($LASTEXITCODE -ne 0) { throw "RC package verification failed" }
+      - name: Upload RC evidence / RC証跡を保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkflowAutomationHub-Windows
+          path: |
+            dist/WorkflowAutomationHub.exe
+            dist/SBOM.spdx.json
+            dist/SBOM.spdx.json.sha256.txt
+            dist/THIRD_PARTY_NOTICES_REVIEW.txt
+            dist/THIRD_PARTY_NOTICES_REVIEW.txt.sha256.txt
+            dist/build-dependencies.lock.txt
+            dist/build-dependencies.lock.txt.sha256.txt
+            release/WorkflowAutomationHub-v0.1.0-Windows-x64-RC.zip
+            release/WorkflowAutomationHub-v0.1.0-Windows-x64-RC.zip.sha256.txt
+          if-no-files-found: error
