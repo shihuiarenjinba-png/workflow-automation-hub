@@ -34,6 +34,20 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Source self-test / ソース自己診断
         run: python desktop_app.py --self-test
+      - name: Generate dependency evidence / 依存関係証跡
+        shell: pwsh
+        run: |
+          python generate_dependency_evidence.py --requirements requirements.txt --out-dir dist
+          if ($LASTEXITCODE -ne 0) { throw "Dependency evidence generation failed" }
+          python -m pip freeze --all | Set-Content -Encoding utf8 "dist\build-dependencies.lock.txt"
+          python -c "import json; p=json.load(open(r'dist/SBOM.spdx.json', encoding='utf-8')); assert p['spdxVersion']=='SPDX-2.3'; assert len(p['packages']) > 0"
+          if ($LASTEXITCODE -ne 0) { throw "SBOM validation failed" }
+          $files = @('dist\SBOM.spdx.json','dist\THIRD_PARTY_NOTICES_REVIEW.txt','dist\build-dependencies.lock.txt')
+          foreach ($file in $files) {
+            if (-not (Test-Path $file) -or (Get-Item $file).Length -le 0) { throw "Missing dependency evidence: $file" }
+            $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($file))" | Set-Content -Encoding ascii "$file.sha256.txt"
+          }
       - name: Build EXE / EXE作成
         shell: pwsh
         run: |
@@ -44,9 +58,16 @@ jobs:
         run: |
           $process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Packaged EXE self-test failed with exit code $($process.ExitCode)" }
-      - name: Upload EXE / EXEを保存
+      - name: Upload RC evidence / RC証跡を保存
         uses: actions/upload-artifact@v4
         with:
           name: WorkflowAutomationHub-Windows
-          path: dist/WorkflowAutomationHub.exe
+          path: |
+            dist/WorkflowAutomationHub.exe
+            dist/SBOM.spdx.json
+            dist/SBOM.spdx.json.sha256.txt
+            dist/THIRD_PARTY_NOTICES_REVIEW.txt
+            dist/THIRD_PARTY_NOTICES_REVIEW.txt.sha256.txt
+            dist/build-dependencies.lock.txt
+            dist/build-dependencies.lock.txt.sha256.txt
           if-no-files-found: error
