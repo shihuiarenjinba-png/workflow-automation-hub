@@ -131,7 +131,8 @@ try {
     if ($SelfTest.ExitCode -ne 0) { throw "Extracted packaged EXE self-test failed: $($SelfTest.ExitCode)" }
 
     $ReportPath = Join-Path $VerifyRoot "support_report-ci.txt"
-    $Diagnose = Start-Process -FilePath (Join-Path $VerifyRoot "WorkflowAutomationHub.exe") -ArgumentList @("--diagnose", $ReportPath) -Wait -PassThru
+    $DiagnoseArgs = "--diagnose `"$ReportPath`""
+    $Diagnose = Start-Process -FilePath (Join-Path $VerifyRoot "WorkflowAutomationHub.exe") -ArgumentList $DiagnoseArgs -Wait -PassThru
     if ($Diagnose.ExitCode -ne 0) { throw "Extracted packaged EXE diagnostics failed: $($Diagnose.ExitCode)" }
     Require-File $ReportPath
     $Report = Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8 | ConvertFrom-Json
