@@ -15,9 +15,14 @@
 - [x] Task Scheduler uses fixed runner, LIMITED + interactive user; no arbitrary command scheduling
 - [x] Redirect hardening regression test for HTTP helper
 - [x] Source and packaged EXE self-test gate
+- [x] `CODE_OPERATOR_HANDOFF.md` defines the Windows/package/Google acceptance boundary
 
-## Real Windows + real Google account gates
+## Code/package operator gates / 実Windows + 実Google + 最終ZIP
 
+- [ ] Build the exact approved branch/commit on Windows and run all tests + source/packaged self-tests
+- [ ] Create and inspect the RC/customer ZIP only after build/self-test success
+- [ ] Include EXE, required user/setup docs, checklist, dependency/license evidence, `CODE_OPERATOR_HANDOFF.md`, and source-commit release information
+- [ ] Scan the package for OAuth JSON, tokens, client secrets, API keys, passwords, and private test data
 - [ ] Windows 10 smoke test
 - [ ] Windows 11 smoke test
 - [ ] Switch 日本語 → English → 日本語; restart and confirm the locale is retained
@@ -35,12 +40,19 @@
 - [ ] Inspect `%LOCALAPPDATA%\WorkflowAutomationHub\` permissions/data and confirm no plaintext OAuth token/client JSON
 - [ ] Verify audit logs redact credentials/Bearer/API-key-like values
 - [ ] Build the packaged EXE from a path containing spaces/non-ASCII characters; packaged self-test must pass
-- [ ] Run Windows Defender/AV scan and record the final artifact SHA-256
+- [ ] Run Windows Defender/AV scan
 - [ ] Prepare LICENSE/NOTICE/SBOM and lock dependency versions
 - [ ] Perform Google Testing-project → Production-project/new Desktop OAuth JSON → reauthorization migration once
 - [ ] Recheck current Google OAuth/Blogger API commercial, verification, privacy-policy, and user-data requirements immediately before sale
-- [ ] Authenticode-sign the final installer/executable if commercially distributed
+- [ ] Record the SHA-256 of the **exact ZIP actually distributed**
 
-Do not merge/release as a commercial build until every applicable unchecked item is completed on a controlled Windows machine/account.
+## Authenticode / Microsoft signing status / 署名の扱い
 
-未チェック項目が残っている間は販売完成扱いにしません。
+- **DEFERRED / NOT VERIFIED for this handoff.** The owner's signing path is currently unavailable.
+- Do not mark signing as passed and do not fabricate/bypass signature evidence.
+- An unsigned RC may be used for controlled acceptance. If an unsigned customer ZIP is ultimately distributed, disclose that state and expect possible Windows reputation/security warnings.
+- If signing becomes available later, sign the exact final binary and regenerate the customer ZIP SHA-256.
+
+This repository is considered **GitHub-side handoff ready**, not sales-approved. Final packaging and real-account/real-Windows acceptance belong to the code/package operator.
+
+mainへ販売版としてマージする判断は、コード担当の実機受入・最終ZIP確定後に行います。
