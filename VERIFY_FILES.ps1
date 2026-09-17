@@ -3,34 +3,34 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Manifest = Join-Path $Root "MANIFEST_SHA256.txt"
 
 if (-not (Test-Path $Manifest)) {
-    throw "MANIFEST_SHA256.txt is missing / MANIFEST_SHA256.txt がありません"
+    throw "MANIFEST_SHA256.txt is missing"
 }
 
 $Checked = 0
 foreach ($Line in Get-Content -LiteralPath $Manifest -Encoding utf8) {
     if ([string]::IsNullOrWhiteSpace($Line)) { continue }
     if ($Line -notmatch '^([0-9a-fA-F]{64})  (.+)$') {
-        throw "Invalid manifest line / マニフェスト形式不正: $Line"
+        throw "Invalid manifest line: $Line"
     }
     $Expected = $Matches[1].ToLowerInvariant()
     $Relative = $Matches[2]
     if ($Relative -match '(^|[\\/])\.\.([\\/]|$)' -or [IO.Path]::IsPathRooted($Relative)) {
-        throw "Unsafe manifest path / 危険なパス: $Relative"
+        throw "Unsafe manifest path: $Relative"
     }
     $Target = Join-Path $Root ($Relative -replace '/', '\\')
     if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) {
-        throw "Missing file / ファイル不足: $Relative"
+        throw "Missing file: $Relative"
     }
     $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash.ToLowerInvariant()
     if ($Actual -ne $Expected) {
-        throw "Hash mismatch / SHA-256不一致: $Relative"
+        throw "Hash mismatch: $Relative"
     }
     $Checked++
 }
 
 if ($Checked -le 0) {
-    throw "No files were verified / 検証対象がありません"
+    throw "No files were verified"
 }
 
 Write-Host "PASS: verified $Checked file(s) against MANIFEST_SHA256.txt"
-Write-Host "PASS: $Checked 個のファイルをSHA-256で検証しました"
+
