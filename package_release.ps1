@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 
 function Require-File([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        throw "Required file missing / 必須ファイルがありません: $Path"
+        throw "Required file missing: $Path"
     }
 }
 
@@ -111,7 +111,7 @@ $ManifestLines | Set-Content -LiteralPath (Join-Path $Stage "MANIFEST_SHA256.txt
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Stage "VERIFY_FILES.ps1")
 if ($LASTEXITCODE -ne 0) {
-    throw "Staging manifest verification failed / 配布前マニフェスト検証失敗"
+    throw "Staging manifest verification failed"
 }
 
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $Zip -CompressionLevel Optimal
@@ -145,5 +145,5 @@ finally {
     if (Test-Path $VerifyRoot) { Remove-Item -Recurse -Force $VerifyRoot }
 }
 
-Write-Host "Package verified / ZIP検証完了: $Zip"
+Write-Host "Package verified: $Zip"
 Write-Host "ZIP SHA-256: $ZipHash"
