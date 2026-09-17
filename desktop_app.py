@@ -36,7 +36,7 @@ def main() -> int:
         from automation_hub.diagnostics import write_diagnostics
         try:
             report = write_diagnostics(Path(args.diagnose))
-            print(f"Support report written / サポートレポート作成: {args.diagnose}")
+            print("Support report written.")
             return 0 if report.get("overall_ok") else 3
         except Exception as exc:
             print(f"DIAGNOSTICS ERROR: {type(exc).__name__}", file=sys.stderr)
