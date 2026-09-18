@@ -117,6 +117,13 @@ python -m unittest discover -s tests -v
 powershell -ExecutionPolicy Bypass -File .\build_windows.ps1
 ```
 
+The Windows build installs only the exact versions and SHA-256 hashes in
+`requirements-lock.txt`. Update the lock, `SBOM.cyclonedx.json`, and
+`THIRD_PARTY_NOTICES.md` together after any dependency change.
+
+Windowsビルドは `requirements-lock.txt` に固定された版とSHA-256のみを導入します。
+依存を変更した場合は、lock、`SBOM.cyclonedx.json`、`THIRD_PARTY_NOTICES.md` を同時に更新してください。
+
 GitHub Actionsの `Windows build / Windowsビルド` でもWindows EXEをArtifactとして生成します。
 
 ## Security principles / セキュリティ原則

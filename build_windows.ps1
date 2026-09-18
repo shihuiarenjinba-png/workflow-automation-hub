@@ -1,13 +1,20 @@
 # Workflow Automation Hub - Windows build / Windows ビルド
 $ErrorActionPreference = "Stop"
+$LockFile = Join-Path $PSScriptRoot "requirements-lock.txt"
+
+if (-not (Test-Path $LockFile)) {
+    throw "Dependency lock not found / dependency lockがありません: $LockFile"
+}
 
 if (-not (Test-Path ".venv")) {
     py -3 -m venv .venv
 }
 
 $python = Join-Path $PWD ".venv\Scripts\python.exe"
-& $python -m pip install --upgrade pip
-& $python -m pip install -r requirements-build.txt
+& $python -m pip install --require-hashes -r $LockFile
+if ($LASTEXITCODE -ne 0) {
+    throw "Locked dependency installation failed / 固定依存の導入に失敗しました"
+}
 & $python -m pip check
 & $python -m unittest discover -s tests -v
 & $python desktop_app.py --self-test

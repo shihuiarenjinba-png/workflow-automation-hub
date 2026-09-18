@@ -41,7 +41,10 @@
 - [ ] Verify audit logs redact credentials/Bearer/API-key-like values
 - [ ] Build the packaged EXE from a path containing spaces/non-ASCII characters; packaged self-test must pass
 - [ ] Run Windows Defender/AV scan
-- [ ] Prepare LICENSE/NOTICE/SBOM and lock dependency versions
+- [ ] Add the owner-approved product `LICENSE` (no license has been selected yet)
+- [x] Generate `THIRD_PARTY_NOTICES.md` with dependency license/NOTICE text
+- [x] Generate and validate CycloneDX 1.6 `SBOM.cyclonedx.json`
+- [x] Pin build/runtime dependencies and SHA-256 hashes in `requirements-lock.txt`; enforce it in local/CI builds
 - [ ] Perform Google Testing-project → Production-project/new Desktop OAuth JSON → reauthorization migration once
 - [ ] Recheck current Google OAuth/Blogger API commercial, verification, privacy-policy, and user-data requirements immediately before sale
 - [ ] Record the SHA-256 of the **exact ZIP actually distributed**
