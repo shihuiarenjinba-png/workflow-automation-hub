@@ -1,0 +1,71 @@
+name: Windows build / Windowsビルド
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact source / 正確なソースをチェックアウト
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Python / Python設定
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies / 依存関係
+        run: python -m pip install --require-hashes -r requirements-lock.txt
+      - name: Verify dependencies / 依存整合性
+        run: python -m pip check
+      - name: Unit tests / ユニットテスト
+        run: python -m unittest discover -s tests -v
+      - name: Source self-test / ソース自己診断
+        run: python desktop_app.py --self-test
+      - name: Source diagnostics privacy check / 診断レポート確認
+        shell: pwsh
+        run: |
+          python desktop_app.py --diagnose source_support_report.json
+          if ($LASTEXITCODE -ne 0) { throw "Source diagnostics failed" }
+          python -c "import json; p=json.load(open('source_support_report.json', encoding='utf-8')); assert p['overall_ok']; assert not any(p['privacy'][k] for k in ['contains_oauth_token','contains_client_secret','contains_username','contains_full_paths'])"
+      - name: Verify committed dependency evidence / コミット済み依存証跡を検証
+        shell: pwsh
+        run: |
+          python -c "import json; p=json.load(open(r'SBOM.cyclonedx.json', encoding='utf-8')); assert p['bomFormat']=='CycloneDX'; assert p['specVersion']=='1.6'; assert len(p['components']) > 0"
+          if ($LASTEXITCODE -ne 0) { throw "SBOM validation failed" }
+          $files = @('SBOM.cyclonedx.json','THIRD_PARTY_NOTICES.md','requirements-lock.txt')
+          foreach ($file in $files) {
+            if (-not (Test-Path $file) -or (Get-Item $file).Length -le 0) { throw "Missing dependency evidence: $file" }
+          }
+      - name: Build EXE / EXE作成
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name WorkflowAutomationHub --add-data "resources;resources" --collect-all googleapiclient --collect-all google_auth_oauthlib desktop_app.py
+          if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) { throw "EXE was not created" }
+      - name: Packaged EXE self-test / EXE自己診断
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged EXE self-test failed with exit code $($process.ExitCode)" }
+      - name: Upload non-package build evidence / ZIP前ビルド証跡を保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkflowAutomationHub-Windows
+          path: |
+            dist/WorkflowAutomationHub.exe
+            SBOM.cyclonedx.json
+            THIRD_PARTY_NOTICES.md
+            requirements-lock.txt
+          if-no-files-found: error
