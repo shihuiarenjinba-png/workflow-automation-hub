@@ -1,42 +1,75 @@
 # Code / Package Operator Handoff — Workflow Automation Hub
 
-Updated: 2026-09-17
+Updated: 2026-09-18
 
 ## Current boundary
 
-The GitHub-side candidate is prepared for a controlled Windows build and Blogger acceptance test. The repository currently builds and self-tests `WorkflowAutomationHub.exe`; the final customer ZIP is intentionally left to the code/package operator.
+The GitHub-side candidate now creates and re-verifies a complete RC ZIP on GitHub Actions. A clean physical Windows PC is no longer required merely to prove that the ZIP can be built, extracted, hash-verified, self-tested, and diagnosed on a fresh CI Windows runner.
 
-## GitHub-side work already prepared
+This does not replace owner-machine UI/Google acceptance, Windows support claims, legal/license review, or final commercial approval.
+
+## Work completed on the GitHub side
 
 - Desktop OAuth JSON validation and DPAPI-protected config/token storage.
 - Blogger Connection Test and manageable-blog discovery.
 - Deterministic internal-link insertion and duplicate-link prevention.
 - Dry Run, JSONL audit, backup-before-live-patch, job lock, strict settings/jobs validation, atomic save.
-- Task Scheduler is constrained to the fixed runner and interactive/LIMITED execution.
+- Task Scheduler constrained to the fixed runner and interactive/LIMITED execution.
 - Japanese/English language contract and build/self-test gates.
-- Sales checklist documents remaining Windows/Google gates.
+- Dependency SBOM/review inventory/build-lock evidence generated in CI.
+- Privacy-safe --diagnose mode added.
+- 02_SUPPORT_DIAGNOSTICS.bat creates support_report.txt without OAuth/token contents, Windows username, hostname, or full paths.
+- SUPPORT_JA.md / SUPPORT_EN.md define customer-facing first-line support.
+- VERIFY_FILES.ps1 validates every distributed file against MANIFEST_SHA256.txt.
+- package_release.ps1 creates RC or Sales packages.
+- RC mode records exact source commit + EXE SHA-256, creates ZIP SHA-256, expands the ZIP again, re-verifies the manifest, runs extracted EXE self-test, and runs extracted EXE diagnostics.
+- Sales mode fails closed unless LICENSE, final THIRD_PARTY_NOTICES.txt, and SALES_RELEASE_APPROVED.txt for the exact source commit are present.
+- GitHub Actions checks out the exact PR head instead of relying on an implicit merge checkout, then builds and re-verifies the RC ZIP.
 
-## Code/package operator responsibilities
+## How ZIP verification now works
 
-1. Build the exact approved branch/commit on a controlled Windows machine.
-2. Run the repository tests, source self-test, PyInstaller build, and packaged EXE self-test.
-3. Create the customer/RC ZIP only after the above succeeds.
-4. Include the EXE, required user/setup documentation, release checklist, dependency/license notices, and a release information file identifying the exact source commit.
-5. Scan the package for accidental OAuth JSON, access/refresh tokens, client secrets, API keys, passwords, personal test data, and other secrets before distribution.
-6. Test Windows 10/11, JA/EN persistence, and 100% / 125% / 150% scaling.
-7. Use a controlled Google Cloud Testing project with a Desktop app OAuth client and a test Blogger blog.
-8. Verify import/authorize/restart persistence, Blogger Connection Test, Dry Run, controlled live update, local backup, and backup-failure fail-closed behavior.
-9. Verify Scheduler behavior and restart behavior.
-10. Run Defender/AV and complete LICENSE / NOTICE / SBOM / dependency-lock review.
-11. Recheck the current Google/Blogger production/verification requirements immediately before sale.
-12. Record the SHA-256 of the exact ZIP actually distributed.
+The distributor and customer do not need to trust a private local check.
 
-## Authenticode / Microsoft signing
+1. GitHub Actions creates WorkflowAutomationHub-v0.1.0-Windows-x64-RC.zip.
+2. A .zip.sha256.txt sidecar records the exact outer ZIP SHA-256.
+3. The ZIP contains MANIFEST_SHA256.txt for every distributed file.
+4. VERIFY_FILES.ps1 recomputes every file hash after extraction.
+5. CI itself expands that exact ZIP and runs the verifier again.
+6. CI then runs the extracted WorkflowAutomationHub.exe --self-test and --diagnose.
 
-Authenticode is **deferred** in this handoff because the owner's signing path is currently unavailable. Do not mark signing as passed.
+The same outer ZIP hash can be recomputed by the owner or customer with Get-FileHash.
 
-Unsigned RC packages may be used for controlled acceptance. If the final customer package is distributed unsigned, document that state clearly and expect possible Windows reputation/security warnings. If signing becomes available later, sign the exact final binary and regenerate the package SHA-256 afterward.
+## Remaining code/package operator actions
+
+1. Use only the latest successful GitHub Actions artifact from the exact approved commit.
+2. Compare the RC ZIP SHA-256 against its sidecar, then retain both as release evidence.
+3. Fully extract the exact RC on the owner's Windows machine; run VERIFY_FILES.ps1 and 02_SUPPORT_DIAGNOSTICS.bat.
+4. Complete JA/EN and 100/125/150% UI checks for the Windows versions actually claimed as supported.
+5. Run real Desktop OAuth/Blogger Connection Test, Dry Run, one controlled live update, backup/fail-closed, and Scheduler acceptance.
+6. Run Defender/AV against the exact candidate.
+7. Choose the formal product license and complete manual third-party license/NOTICE review. The generated review inventory is evidence, not a substitute for legal review.
+8. Recheck current Google/Blogger production requirements immediately before commercial release.
+9. For the exact accepted commit, create SALES_RELEASE_APPROVED.txt with:
+   source_commit=<40-character approved SHA>
+   manual_acceptance=PASS
+10. Provide LICENSE and final THIRD_PARTY_NOTICES.txt, then run:
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\package_release.ps1 -Mode Sales -SourceCommit <approved SHA>
+11. Publish the exact Sales ZIP SHA-256 alongside the distributed ZIP.
+
+## Customer support if the app does not open
+
+Ask for support_report.txt generated by 02_SUPPORT_DIAGNOSTICS.bat and the ZIP/EXE SHA-256. Do not ask for OAuth JSON, refresh tokens, client secrets, or private blog content. Do not make disabling Defender/security software the standard resolution.
+
+Triage in this order:
+1. Windows blocked the EXE before launch.
+2. EXE launched but self-test/diagnostics failed.
+3. UI launched but Google authorization/API failed.
+4. UI/display-only issue.
+
+## Authenticode
+
+Authenticode remains DEFERRED / NOT VERIFIED because the owner's signing path is unavailable. Do not mark signing as passed. If the final customer package is unsigned, disclose that state and expect Windows reputation/security warnings.
 
 ## Sales status
 
-This handoff does not mark the product sales-ready. Packaging and real Google/Windows acceptance belong to the next operator, and unresolved checklist items remain release blockers unless the owner explicitly accepts a documented exception.
+This is now a reproducible, supportable RC packaging path. Sales mode remains deliberately fail-closed until the exact commit passes owner/manual acceptance and formal license/NOTICE gates.

@@ -39,4 +39,19 @@ if ($process.ExitCode -ne 0) {
     throw "Packaged EXE self-test failed / EXE自己診断に失敗しました (exit=$($process.ExitCode))"
 }
 
+Write-Host "==> Verify committed dependency evidence / コミット済み依存証跡を検証"
+$EvidenceFiles = @(
+    "SBOM.cyclonedx.json",
+    "THIRD_PARTY_NOTICES.md",
+    "requirements-lock.txt"
+)
+foreach ($EvidenceFile in $EvidenceFiles) {
+    if (-not (Test-Path $EvidenceFile)) {
+        throw "Missing dependency evidence / 依存関係証跡がありません: $EvidenceFile"
+    }
+    $Hash = (Get-FileHash -Algorithm SHA256 $EvidenceFile).Hash.ToLowerInvariant()
+    Write-Host "$Hash  $EvidenceFile"
+}
+
 Write-Host "Build complete / ビルド完了: dist\WorkflowAutomationHub.exe"
+Write-Host "ZIP packaging is intentionally blocked until a formal product LICENSE is selected; package_release.ps1 fails closed for RC and Sales modes."

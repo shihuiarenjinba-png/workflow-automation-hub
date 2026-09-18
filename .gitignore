@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 build/
 dist/
+release/
 *.spec
 *.log
 .env
@@ -12,3 +13,4 @@ token*.json
 *.dpapi
 .state/
 logs/
+SALES_RELEASE_APPROVED.txt
