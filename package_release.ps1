@@ -36,6 +36,7 @@ Require-File "VERIFY_FILES.ps1"
 Require-File "SUPPORT_JA.md"
 Require-File "SUPPORT_EN.md"
 Require-File "README.md"
+Require-File "START_HERE.html"
 Require-File "COMPLIANCE.md"
 Require-File "CODE_OPERATOR_HANDOFF.md"
 Require-File "SALES_RELEASE_CHECKLIST.md"
@@ -70,6 +71,7 @@ $CommonFiles = @(
     "SUPPORT_JA.md",
     "SUPPORT_EN.md",
     "README.md",
+    "START_HERE.html",
     "COMPLIANCE.md",
     "CODE_OPERATOR_HANDOFF.md",
     "SALES_RELEASE_CHECKLIST.md",

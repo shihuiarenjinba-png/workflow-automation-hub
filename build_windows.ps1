@@ -33,6 +33,7 @@ if ($LASTEXITCODE -ne 0) {
 if (-not (Test-Path "dist\WorkflowAutomationHub.exe")) {
     throw "EXE was not created / EXEが作成されませんでした"
 }
+Copy-Item -LiteralPath ".\START_HERE.html" -Destination ".\dist\START_HERE.html" -Force
 
 $process = Start-Process -FilePath ".\dist\WorkflowAutomationHub.exe" -ArgumentList "--self-test" -Wait -PassThru
 if ($process.ExitCode -ne 0) {
