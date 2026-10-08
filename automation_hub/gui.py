@@ -217,6 +217,7 @@ class AutomationHubGUI:
 
     def choose_credentials(self) -> None:
         path = filedialog.askopenfilename(
+            parent=self.root,
             title=self.t("select_credentials"),
             filetypes=[("Google OAuth JSON", "*.json"), ("JSON", "*.json")],
         )
