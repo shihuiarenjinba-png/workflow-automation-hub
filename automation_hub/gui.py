@@ -190,21 +190,27 @@ class AutomationHubGUI:
         ttk.Label(frame, text=self.t("google_help"), wraplength=850, justify="left").grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 14)
         )
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 14))
-        ttk.Button(buttons, text=self.t("import_oauth"), command=self.choose_credentials).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("authenticate"), command=self.authenticate_google).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("connection_test"), command=self.test_google).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("load_blogs"), command=self.load_blogs).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("disconnect"), command=self.disconnect_google).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("remove_oauth_config"), command=self.remove_google_config).pack(side="left")
+        buttons = ttk.LabelFrame(frame, text=self.t("google_first_setup"), padding=10)
+        buttons.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        ttk.Button(buttons, text=self.t("import_oauth"), command=self.choose_credentials).grid(row=0, column=0, padx=(0, 10), pady=3, sticky="w")
+        ttk.Button(buttons, text=self.t("authenticate"), command=self.authenticate_google).grid(row=0, column=1, padx=(0, 10), pady=3, sticky="w")
+        ttk.Button(buttons, text=self.t("connection_test"), command=self.test_google).grid(row=0, column=2, padx=0, pady=3, sticky="w")
+        ttk.Label(buttons, text=self.t("google_first_setup_tip"), wraplength=750).grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(7, 0)
+        )
+
+        advanced = ttk.LabelFrame(frame, text=self.t("google_management"), padding=10)
+        advanced.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        ttk.Button(advanced, text=self.t("load_blogs"), command=self.load_blogs).pack(side="left", padx=(0, 8))
+        ttk.Button(advanced, text=self.t("disconnect"), command=self.disconnect_google).pack(side="left", padx=(0, 8))
+        ttk.Button(advanced, text=self.t("remove_oauth_config"), command=self.remove_google_config).pack(side="left")
 
         self.google_status_var = StringVar(value=self._google_status_text())
-        ttk.Label(frame, textvariable=self.google_status_var, wraplength=850).grid(row=2, column=0, columnspan=2, sticky="w")
+        ttk.Label(frame, textvariable=self.google_status_var, wraplength=850).grid(row=3, column=0, columnspan=2, sticky="w")
         self.client_info_var = StringVar(value=self._client_info_text())
-        ttk.Label(frame, textvariable=self.client_info_var, wraplength=850).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(frame, textvariable=self.client_info_var, wraplength=850).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self.blog_text_var = StringVar(value="")
-        ttk.Label(frame, textvariable=self.blog_text_var, wraplength=850).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        ttk.Label(frame, textvariable=self.blog_text_var, wraplength=850).grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     def _build_jobs_tab(self) -> None:
         outer = self.jobs_tab
@@ -244,6 +250,31 @@ class AutomationHubGUI:
         ttk.Button(actions, text=self.t("run_dry"), command=lambda: self.run_job(True)).pack(side="left", padx=(0, 8))
         ttk.Button(actions, text=self.t("run_now"), command=lambda: self.run_job(False)).pack(side="left", padx=(0, 8))
         ttk.Button(actions, text=self.t("delete_job"), command=self.delete_job).pack(side="left")
+        ttk.Label(right, text=self.t("job_effect_title"), font=("Segoe UI", 10, "bold")).grid(
+            row=8, column=0, columnspan=2, sticky="w", pady=(7, 3)
+        )
+        self.job_effect_var = StringVar()
+        ttk.Label(right, textvariable=self.job_effect_var, wraplength=550, justify="left").grid(
+            row=9, column=0, columnspan=2, sticky="w", pady=(0, 12)
+        )
+        for variable in (self.target_var, self.anchor_var, self.link_var, self.max_posts_var):
+            variable.trace_add("write", lambda *_args: self._refresh_job_effect())
+        self._refresh_job_effect()
+
+    def _refresh_job_effect(self) -> None:
+        if not hasattr(self, "job_effect_var"):
+            return
+        target = self.target_var.get().strip()
+        anchor = self.anchor_var.get().strip() or target
+        url = self.link_var.get().strip()
+        if not target or not url:
+            self.job_effect_var.set(self.t("job_effect_missing"))
+            return
+        self.job_effect_var.set(self.t(
+            "job_effect_template",
+            target=target[:45], anchor=anchor[:45], url=url[:90],
+            count=self.max_posts_var.get().strip() or "?",
+        ))
 
     def _build_schedule_tab(self) -> None:
         frame = self.schedule_tab
