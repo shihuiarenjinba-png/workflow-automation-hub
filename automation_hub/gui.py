@@ -15,6 +15,7 @@ from .jobs import JobStore, JobStoreError
 from .models import BloggerLinkJob, ScheduleSpec
 from .scheduler import WindowsTaskScheduler
 from .settings import SettingsStore
+from .ui_flow import home_progress, job_revision, live_run_ready, needs_save
 
 T = TypeVar("T")
 
@@ -34,6 +35,7 @@ class AutomationHubGUI:
         self.blog_display_to_id: dict[str, str] = {}
         self.selected_job_id: str | None = None
         self.busy = False
+        self.preview_revision: str | None = None
         self._async_queue: queue.Queue[tuple[str, Any, Callable[[Any], None] | None]] = queue.Queue()
         self.root.geometry("940x670")
         self.root.minsize(840, 580)
@@ -74,19 +76,85 @@ class AutomationHubGUI:
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.home_tab = ttk.Frame(self.notebook, padding=18)
         self.google_tab = ttk.Frame(self.notebook, padding=14)
         self.jobs_tab = ttk.Frame(self.notebook, padding=14)
         self.schedule_tab = ttk.Frame(self.notebook, padding=14)
         self.compliance_tab = ttk.Frame(self.notebook, padding=14)
+        self.notebook.add(self.home_tab, text=self.t("tab_home"))
         self.notebook.add(self.google_tab, text=self.t("tab_google"))
         self.notebook.add(self.jobs_tab, text=self.t("tab_jobs"))
         self.notebook.add(self.schedule_tab, text=self.t("tab_schedule"))
         self.notebook.add(self.compliance_tab, text=self.t("tab_compliance"))
+        self._build_home_tab()
         self._build_google_tab()
         self._build_jobs_tab()
         self._build_schedule_tab()
         self._build_compliance_tab()
         self.refresh_jobs(show_error=False)
+
+    def _build_home_tab(self) -> None:
+        """Explain what the product actually does before exposing advanced settings."""
+        frame = self.home_tab
+        ttk.Label(
+            frame, text=self.t("home_title"), font=("Segoe UI", 19, "bold")
+        ).pack(anchor="w", pady=(0, 8))
+        ttk.Label(
+            frame, text=self.t("home_what"), wraplength=800, justify="left"
+        ).pack(anchor="w", pady=(0, 8))
+        ttk.Label(
+            frame, text=self.t("home_example"), wraplength=800, justify="left",
+            font=("Segoe UI", 10)
+        ).pack(anchor="w", pady=(0, 14))
+
+        def step(title_key: str, desc_key: str, status_key: str, button_key: str, tab: ttk.Frame) -> StringVar:
+            box = ttk.LabelFrame(frame, text=self.t(title_key), padding=12)
+            box.pack(fill="x", pady=(0, 10))
+            ttk.Label(box, text=self.t(desc_key), wraplength=730, justify="left").pack(anchor="w", pady=(0, 5))
+            status = StringVar()
+            ttk.Label(box, textvariable=status).pack(anchor="w", pady=(0, 8))
+            ttk.Button(box, text=self.t(button_key), command=lambda target=tab: self.notebook.select(target)).pack(anchor="w")
+            return status
+
+        self.home_connection_status = step(
+            "home_connect_title", "home_connect_help", "home_connect_status",
+            "home_connect_action", self.google_tab
+        )
+        self.home_jobs_status = step(
+            "home_job_title", "home_job_help", "home_job_status",
+            "home_job_action", self.jobs_tab
+        )
+        self.home_preview_status = step(
+            "home_preview_title", "home_preview_help", "home_preview_status",
+            "home_preview_action", self.jobs_tab
+        )
+        footer = ttk.Frame(frame)
+        footer.pack(fill="x", pady=(2, 0))
+        ttk.Label(footer, text=self.t("home_schedule_help"), wraplength=620).pack(side="left")
+        ttk.Button(
+            footer, text=self.t("home_schedule_action"),
+            command=lambda: self.notebook.select(self.schedule_tab)
+        ).pack(side="right")
+        self._refresh_home_status()
+
+    def _refresh_home_status(self) -> None:
+        if not hasattr(self, "home_connection_status"):
+            return
+        try:
+            count = len(self.job_store.load_all())
+        except JobStoreError:
+            count = None
+        try:
+            configured = self.google.has_client_config()
+            token_present = self.google.has_token()
+        except Exception:
+            configured, token_present = False, False
+        auth_state, job_state, _ = home_progress(configured, token_present, count)
+        self.home_connection_status.set(self.t("home_state_" + auth_state))
+        self.home_jobs_status.set(self.t("home_state_" + job_state, count=count if count is not None else 0))
+        self.home_preview_status.set(
+            self.t("home_state_preview_done") if self.preview_revision else self.t("home_state_preview_needed")
+        )
 
     def _google_status_text(self) -> str:
         client = self.t("oauth_imported") if self.google.has_client_config() else self.t("oauth_not_imported")
