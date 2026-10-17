@@ -36,6 +36,7 @@ class AutomationHubGUI:
         self.selected_job_id: str | None = None
         self.busy = False
         self.preview_revision: str | None = None
+        self.google_verified = False  # OAuth token presence is not a verified API connection.
         self._async_queue: queue.Queue[tuple[str, Any, Callable[[Any], None] | None]] = queue.Queue()
         self.root.geometry("940x670")
         self.root.minsize(840, 580)
@@ -150,7 +151,10 @@ class AutomationHubGUI:
         except Exception:
             configured, token_present = False, False
         auth_state, job_state, _ = home_progress(configured, token_present, count)
-        self.home_connection_status.set(self.t("home_state_" + auth_state))
+        self.home_connection_status.set(
+            self.t("home_state_api_verified") if self.google_verified
+            else self.t("home_state_" + auth_state)
+        )
         self.home_jobs_status.set(self.t("home_state_" + job_state, count=count if count is not None else 0))
         preview_matches = False
         if self.preview_revision and self.selected_job_id:
@@ -164,7 +168,11 @@ class AutomationHubGUI:
 
     def _google_status_text(self) -> str:
         client = self.t("oauth_imported") if self.google.has_client_config() else self.t("oauth_not_imported")
-        token = self.t("status_connected") if self.google.has_token() else self.t("status_not_connected")
+        token = (
+            self.t("home_state_api_verified") if self.google_verified
+            else self.t("oauth_saved_unverified") if self.google.has_token()
+            else self.t("status_not_connected")
+        )
         return f"{self.t('oauth_config_status')}: {client}    {self.t('google_auth_status')}: {token}"
 
     def _client_info_text(self) -> str:
@@ -336,11 +344,14 @@ class AutomationHubGUI:
             return
         try:
             result = self.google.import_client_config(Path(path))
+            self.google_verified = False
+            self.preview_revision = None
             self.settings["google_client_id_hint"] = result.metadata.client_id_hint
             self.settings["google_project_id"] = result.metadata.project_id
             self.settings_store.save(self.settings)
             self.google_status_var.set(self._google_status_text())
             self.client_info_var.set(self._client_info_text())
+            self._refresh_home_status()
             key = "oauth_imported_token_reset" if result.token_reset else "oauth_imported_ok"
             messagebox.showinfo(self.t("info_title"), self.t(key))
         except Exception as exc:
@@ -382,6 +393,9 @@ class AutomationHubGUI:
         self.root.after(100, self._poll_async_queue)
 
     def authenticate_google(self) -> None:
+        self.google_verified = False
+        self.preview_revision = None
+        self._refresh_home_status()
         self.run_async(lambda: self.google.authenticate(self.locale), lambda _value: self._after_auth())
 
     def _after_auth(self) -> None:
@@ -390,18 +404,25 @@ class AutomationHubGUI:
         self.load_blogs()
 
     def test_google(self) -> None:
+        self.google_verified = False
+        self._refresh_home_status()
         self.run_async(self.google.check_connection, lambda result: self._after_google_test(result.blogs))
 
     def _after_google_test(self, blogs: list[dict[str, str]]) -> None:
+        self.google_verified = True
         self._set_blogs(blogs)
         self.google_status_var.set(self._google_status_text())
+        self._refresh_home_status()
         messagebox.showinfo(self.t("info_title"), self.t("google_connected"))
 
     def load_blogs(self) -> None:
         self.run_async(self.google.list_blogs, self._after_blogs_loaded)
 
     def _after_blogs_loaded(self, blogs: list[dict[str, str]]) -> None:
+        self.google_verified = True
         self._set_blogs(blogs)
+        self.google_status_var.set(self._google_status_text())
+        self._refresh_home_status()
         self.blog_text_var.set(self.t("blogs_loaded", count=len(blogs)))
 
     def _set_blogs(self, blogs: list[dict[str, str]]) -> None:
@@ -420,7 +441,10 @@ class AutomationHubGUI:
             return
         try:
             self.google.disconnect()
+            self.google_verified = False
+            self.preview_revision = None
             self.google_status_var.set(self._google_status_text())
+            self._refresh_home_status()
             messagebox.showinfo(self.t("info_title"), self.t("google_disconnected"))
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc))
@@ -430,11 +454,14 @@ class AutomationHubGUI:
             return
         try:
             self.google.remove_client_config()
+            self.google_verified = False
+            self.preview_revision = None
             self.settings["google_client_id_hint"] = ""
             self.settings["google_project_id"] = ""
             self.settings_store.save(self.settings)
             self.google_status_var.set(self._google_status_text())
             self.client_info_var.set("")
+            self._refresh_home_status()
             self.blogs = []
             self.blog_display_to_id = {}
             if hasattr(self, "blog_combo"):
