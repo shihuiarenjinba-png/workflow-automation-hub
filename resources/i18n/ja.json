@@ -111,5 +111,7 @@
   "home_state_preview_needed": "状況：試運転は未完了です。実際の記事はまだ変更しません",
   "save_changes_first": "入力中の内容はまだ保存されていません。先に「ジョブ保存」を押してください。保存後はもう一度試運転してください。",
   "preview_required_before_live": "最初に「試運転（記事は変更しない）」を実行してください。入力・保存を変えた場合も再試運転が必要です。",
-  "busy_processing": "現在の操作が完了してから実行してください。"
+  "busy_processing": "現在の操作が完了してから実行してください。",
+  "home_state_api_verified": "状況：Blogger APIの接続確認に成功しました（この起動中）",
+  "oauth_saved_unverified": "認証情報あり・API接続未確認"
 }
