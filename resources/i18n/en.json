@@ -111,5 +111,7 @@
   "home_state_preview_needed": "Status: no successful preview in this session; no posts changed",
   "save_changes_first": "These form values are not saved. Click 'Save Job' first and run the preview again before making changes.",
   "preview_required_before_live": "Run 'Preview (no changes)' first. Repeat the preview after changing or saving the job.",
-  "busy_processing": "An operation is already in progress."
+  "busy_processing": "An operation is already in progress.",
+  "home_state_api_verified": "Status: Blogger API connection verified in this session",
+  "oauth_saved_unverified": "Credentials saved; API connection not yet verified"
 }
