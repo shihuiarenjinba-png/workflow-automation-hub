@@ -408,8 +408,9 @@ class AutomationHubGUI:
                 self.jobs_list.delete(0, "end")
             if hasattr(self, "schedule_job_combo"):
                 self.schedule_job_combo["values"] = []
+            self._refresh_home_status()
             if show_error:
-                messagebox.showerror(self.t("error_title"), str(exc))
+                messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
             return
         if hasattr(self, "jobs_list"):
             self.jobs_list.delete(0, "end")
@@ -417,6 +418,7 @@ class AutomationHubGUI:
                 self.jobs_list.insert("end", f"{job.name} [{job.id}]")
         if hasattr(self, "schedule_job_combo"):
             self.schedule_job_combo["values"] = [f"{job.name} [{job.id}]" for job in jobs]
+        self._refresh_home_status()
 
     def new_job(self) -> None:
         self.selected_job_id = None
@@ -481,6 +483,7 @@ class AutomationHubGUI:
             job = self._form_job()
             self.job_store.upsert(job)
             self.selected_job_id = job.id
+            self.preview_revision = None
             self.refresh_jobs(show_error=False)
             messagebox.showinfo(self.t("info_title"), self.t("saved"))
         except Exception as exc:
@@ -499,6 +502,7 @@ class AutomationHubGUI:
             except Exception:
                 pass
             self.job_store.delete(job_id)
+            self.preview_revision = None
             self.selected_job_id = None
             self.new_job()
             self.refresh_jobs(show_error=False)
@@ -507,22 +511,49 @@ class AutomationHubGUI:
             messagebox.showerror(self.t("error_title"), str(exc))
 
     def run_job(self, dry_run: bool) -> None:
-        if not self.selected_job_id:
-            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"))
+        if self.busy:
+            messagebox.showinfo(self.t("info_title"), self.t("busy_processing"), parent=self.root)
             return
-        if not dry_run and not messagebox.askyesno(self.t("warning_title"), self.t("confirm_run")):
+        if not self.selected_job_id:
+            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"), parent=self.root)
             return
         try:
             job = self.job_store.get(self.selected_job_id)
+            edited = self._form_job()
         except Exception as exc:
-            messagebox.showerror(self.t("error_title"), str(exc))
+            messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
             return
+        if needs_save(job, edited):
+            messagebox.showwarning(self.t("warning_title"), self.t("save_changes_first"), parent=self.root)
+            return
+        if not dry_run:
+            ready, why = live_run_ready(
+                job=job, edited=edited, preview_revision=self.preview_revision, busy=self.busy
+            )
+            if not ready:
+                key = "preview_required_before_live" if why == "preview_required" else "save_changes_first"
+                messagebox.showwarning(self.t("warning_title"), self.t(key), parent=self.root)
+                return
+            if not messagebox.askyesno(
+                self.t("warning_title"), self.t("confirm_run"), parent=self.root
+            ):
+                return
         self.run_async(
             lambda: run_link_job(self.google, job, dry_run=dry_run),
-            lambda result: messagebox.showinfo(
-                self.t("info_title"),
-                self.t("dry_result" if dry_run else "run_result", scanned=result.scanned, changed=result.changed),
-            ),
+            lambda result: self._after_job_run(job, result, dry_run),
+        )
+
+    def _after_job_run(self, job: BloggerLinkJob, result: Any, dry_run: bool) -> None:
+        if dry_run:
+            self.preview_revision = job_revision(job)
+        else:
+            # Never permit a second write from one preview by accident.
+            self.preview_revision = None
+        self._refresh_home_status()
+        messagebox.showinfo(
+            self.t("info_title"),
+            self.t("dry_result" if dry_run else "run_result", scanned=result.scanned, changed=result.changed),
+            parent=self.root,
         )
 
     def on_schedule_job_select(self, _event: object = None) -> None:
