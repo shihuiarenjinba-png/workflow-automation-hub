@@ -107,7 +107,7 @@ class AutomationHubGUI:
             font=("Segoe UI", 10)
         ).pack(anchor="w", pady=(0, 14))
 
-        def step(title_key: str, desc_key: str, status_key: str, button_key: str, tab: ttk.Frame) -> StringVar:
+        def step(title_key: str, desc_key: str, button_key: str, tab: ttk.Frame) -> StringVar:
             box = ttk.LabelFrame(frame, text=self.t(title_key), padding=12)
             box.pack(fill="x", pady=(0, 10))
             ttk.Label(box, text=self.t(desc_key), wraplength=730, justify="left").pack(anchor="w", pady=(0, 5))
@@ -117,15 +117,15 @@ class AutomationHubGUI:
             return status
 
         self.home_connection_status = step(
-            "home_connect_title", "home_connect_help", "home_connect_status",
+            "home_connect_title", "home_connect_help",
             "home_connect_action", self.google_tab
         )
         self.home_jobs_status = step(
-            "home_job_title", "home_job_help", "home_job_status",
+            "home_job_title", "home_job_help",
             "home_job_action", self.jobs_tab
         )
         self.home_preview_status = step(
-            "home_preview_title", "home_preview_help", "home_preview_status",
+            "home_preview_title", "home_preview_help",
             "home_preview_action", self.jobs_tab
         )
         footer = ttk.Frame(frame)
@@ -152,8 +152,14 @@ class AutomationHubGUI:
         auth_state, job_state, _ = home_progress(configured, token_present, count)
         self.home_connection_status.set(self.t("home_state_" + auth_state))
         self.home_jobs_status.set(self.t("home_state_" + job_state, count=count if count is not None else 0))
+        preview_matches = False
+        if self.preview_revision and self.selected_job_id:
+            try:
+                preview_matches = job_revision(self.job_store.get(self.selected_job_id)) == self.preview_revision
+            except (KeyError, JobStoreError, ValueError):
+                preview_matches = False
         self.home_preview_status.set(
-            self.t("home_state_preview_done") if self.preview_revision else self.t("home_state_preview_needed")
+            self.t("home_state_preview_done") if preview_matches else self.t("home_state_preview_needed")
         )
 
     def _google_status_text(self) -> str:
@@ -278,10 +284,47 @@ class AutomationHubGUI:
         ttk.Label(self.compliance_tab, text=text, wraplength=850, justify="left").pack(anchor="w")
 
     def on_language_change(self, _event: object = None) -> None:
-        self.locale = "ja" if self.language_var.get() == "日本語" else "en"
+        next_locale = "ja" if self.language_var.get() == "日本語" else "en"
+        if next_locale == self.locale:
+            return
+        # Changing display language must never destroy in-progress job input.
+        fields = {
+            "job_name_var": self.job_name_var.get(),
+            "blog_var": self.blog_var.get(),
+            "target_var": self.target_var.get(),
+            "anchor_var": self.anchor_var.get(),
+            "link_var": self.link_var.get(),
+            "max_posts_var": self.max_posts_var.get(),
+        }
+        enabled = self.enabled_var.get()
+        old_kind = {
+            self.t("daily"): "daily",
+            self.t("weekly"): "weekly",
+            self.t("logon"): "logon",
+        }.get(self.schedule_kind_var.get(), "daily")
+        schedule_time = self.schedule_time_var.get()
+        week = {day: item.get() for day, item in self.weekday_vars.items()}
+        schedule_choice = self.schedule_job_var.get()
+        tab_index = self.notebook.index(self.notebook.select())
+        self.locale = next_locale
         self.settings["locale"] = self.locale
         self.settings_store.save(self.settings)
         self.build_ui()
+        for name, value in fields.items():
+            getattr(self, name).set(value)
+        self.enabled_var.set(enabled)
+        self.schedule_kind_var.set(self.t(old_kind))
+        self.schedule_time_var.set(schedule_time)
+        for day, enabled_day in week.items():
+            self.weekday_vars[day].set(enabled_day)
+        self.schedule_job_var.set(schedule_choice)
+        self.notebook.select(tab_index)
+        if self.selected_job_id:
+            for index in range(self.jobs_list.size()):
+                if self._id_from_display(self.jobs_list.get(index)) == self.selected_job_id:
+                    self.jobs_list.selection_set(index)
+                    break
+        self._refresh_home_status()
 
     def choose_credentials(self) -> None:
         path = filedialog.askopenfilename(
@@ -444,6 +487,7 @@ class AutomationHubGUI:
         self.selected_job_id = self._id_from_display(self.jobs_list.get(selection[0]))
         try:
             self.load_job(self.selected_job_id)
+            self._refresh_home_status()
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc))
 
