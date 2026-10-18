@@ -690,8 +690,8 @@ class AutomationHubGUI:
             # If the Windows task cannot be removed, retain the rule to avoid
             # a phantom recurring task that the UI claims was deleted.
             self.scheduler.unregister(job_id)
-            self.job_store.delete(job_id)
             self.schedule_approvals.revoke(job_id)
+            self.job_store.delete(job_id)
             self.preview_revision = None
             self.selected_job_id = None
             self.new_job(force=True)
