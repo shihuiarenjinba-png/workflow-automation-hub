@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import queue
 import threading
 import uuid
@@ -618,8 +619,15 @@ class AutomationHubGUI:
         if hasattr(self, "jobs_list"):
             self.jobs_list.delete(0, "end")
             self.job_row_ids = []
+            totals = Counter(job.name for job in jobs)
+            displayed: dict[str, int] = {}
             for job in jobs:
-                self.jobs_list.insert("end", job.name)
+                displayed[job.name] = displayed.get(job.name, 0) + 1
+                label = (
+                    job.name if totals[job.name] == 1
+                    else f"{job.name} ({displayed[job.name]}/{totals[job.name]})"
+                )
+                self.jobs_list.insert("end", label)
                 self.job_row_ids.append(job.id)
             self._restore_list_selection()
         if hasattr(self, "schedule_job_combo"):
