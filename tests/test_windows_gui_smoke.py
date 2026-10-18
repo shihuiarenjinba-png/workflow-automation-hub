@@ -1,0 +1,183 @@
+"""Real Tkinter widget smoke tests on Windows CI, with zero network access.
+
+Only the GUI is real. Credentials, Blogger, schedules and filesystem state are
+test doubles. Tests never patch or publish a real Blogger post.
+"""
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+import sys
+import tempfile
+import tkinter as tk
+from tkinter import ttk
+import unittest
+from unittest.mock import MagicMock, patch
+
+from automation_hub import gui as gui_module
+from automation_hub.jobs import JobStore
+from automation_hub.models import BloggerLinkJob
+from automation_hub.schedule_approval import ScheduleApprovalStore
+from automation_hub.settings import SettingsStore
+
+
+@unittest.skipUnless(sys.platform == "win32", "Real Windows Tkinter test")
+class WindowsGuiSmokeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        parent = Path(self.tmp.name)
+        self.jobs = JobStore(parent / "jobs.json")
+        self.settings = SettingsStore(parent / "settings.json")
+        self.approvals = ScheduleApprovalStore(parent / "schedule_approvals.json")
+        self.google = MagicMock()
+        self.google.has_client_config.return_value = False
+        self.google.has_token.return_value = False
+        self.scheduler = MagicMock()
+        self.root = tk.Tk()
+        self.addCleanup(self._close_tk)
+        self.root.withdraw()
+        self.msg_info = patch.object(gui_module.messagebox, "showinfo")
+        self.msg_warning = patch.object(gui_module.messagebox, "showwarning")
+        self.msg_error = patch.object(gui_module.messagebox, "showerror")
+        self.msg_yesno = patch.object(gui_module.messagebox, "askyesno", return_value=True)
+        for obj in (self.msg_info, self.msg_warning, self.msg_error, self.msg_yesno):
+            obj.start()
+            self.addCleanup(obj.stop)
+
+        with patch.object(gui_module, "SettingsStore", return_value=self.settings), \
+             patch.object(gui_module, "JobStore", return_value=self.jobs), \
+             patch.object(gui_module, "ScheduleApprovalStore", return_value=self.approvals), \
+             patch.object(gui_module, "GoogleBloggerConnector", return_value=self.google), \
+             patch.object(gui_module, "WindowsTaskScheduler", return_value=self.scheduler):
+            self.app = gui_module.AutomationHubGUI(self.root)
+        self.root.update_idletasks()
+
+    def _close_tk(self) -> None:
+        if self.root.winfo_exists():
+            self.root.destroy()
+
+    def _saved_job(self, name: str = "Link my post") -> BloggerLinkJob:
+        job = BloggerLinkJob(
+            id="test-rule",
+            name=name,
+            blog_id="test-blog",
+            target_text="Product list",
+            anchor_text="Product list",
+            link_url="https://example.com/products",
+            max_posts=5,
+        )
+        self.jobs.upsert(job)
+        self.app.refresh_jobs()
+        self.app.selected_job_id = job.id
+        self.app.load_job(job.id)
+        return job
+
+    @staticmethod
+    def _buttons(widget: tk.Misc) -> list[ttk.Button]:
+        found: list[ttk.Button] = []
+        for child in widget.winfo_children():
+            if isinstance(child, ttk.Button):
+                found.append(child)
+            found.extend(WindowsGuiSmokeTests._buttons(child))
+        return found
+
+    def _sync_run(self, operation, on_success):
+        on_success(operation())
+
+    def test_home_explains_product_and_navigates_to_real_tabs(self) -> None:
+        self.assertEqual(self.app.notebook.index("end"), 5)
+        self.assertIn("はじめに", self.app.notebook.tab(0, "text"))
+        self.assertIn("Blogger", self.app.t("home_what"))
+        buttons = self._buttons(self.app.home_tab)
+        self.assertEqual(len(buttons), 4)
+        for button, expected_tab in zip(
+            buttons, (self.app.google_tab, self.app.jobs_tab, self.app.jobs_tab, self.app.schedule_tab)
+        ):
+            button.invoke()
+            self.assertEqual(self.app.notebook.select(), str(expected_tab))
+
+    def test_unsaved_edit_blocks_live_and_switch_prompts(self) -> None:
+        old = self._saved_job()
+        other = replace(old, id="other", name="Another rule")
+        self.jobs.upsert(other)
+        self.app.refresh_jobs()
+        self.app.link_var.set("https://example.com/unsaved")
+        with patch.object(gui_module, "run_link_job") as call:
+            self.app.run_job(False)
+            call.assert_not_called()
+        gui_module.messagebox.showwarning.assert_called()
+        gui_module.messagebox.askyesno.return_value = False
+        for index in range(self.app.jobs_list.size()):
+            if "other" in self.app.jobs_list.get(index):
+                self.app.jobs_list.selection_clear(0, "end")
+                self.app.jobs_list.selection_set(index)
+                self.app.on_job_select()
+                break
+        self.assertEqual(self.app.selected_job_id, old.id)
+        self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved")
+
+    def test_preview_then_live_once_uses_saved_rule(self) -> None:
+        job = self._saved_job()
+        remote = MagicMock(return_value=SimpleNamespace(scanned=2, changed=1))
+        with patch.object(gui_module, "run_link_job", remote), \
+             patch.object(self.app, "run_async", side_effect=self._sync_run):
+            self.app.run_job(False)  # must refuse without preview
+            remote.assert_not_called()
+            self.app.run_job(True)  # simulated, no real API call
+            self.assertIsNotNone(self.app.preview_revision)
+            self.app.run_job(False)
+            self.assertIsNone(self.app.preview_revision)
+            self.app.run_job(False)  # must demand fresh preview
+        self.assertEqual(remote.call_count, 2)
+        self.assertEqual([x.kwargs["dry_run"] for x in remote.call_args_list], [True, False])
+        self.assertEqual(remote.call_args_list[-1].args[1].id, job.id)
+
+    def test_locale_change_preserves_current_unsaved_edits(self) -> None:
+        job = self._saved_job()
+        self.app.notebook.select(self.app.jobs_tab)
+        self.app.target_var.set("unsaved custom target")
+        self.app.link_var.set("https://example.com/unsaved")
+        self.app.language_var.set("English")
+        self.app.on_language_change()
+        self.assertEqual(self.app.notebook.tab(self.app.notebook.select(), "text"), "2 Link Rules & Run")
+        self.assertEqual(self.app.selected_job_id, job.id)
+        self.assertEqual(self.app.target_var.get(), "unsaved custom target")
+        self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved")
+        self.app.language_var.set("日本語")
+        self.app.on_language_change()
+        self.assertEqual(self.app.target_var.get(), "unsaved custom target")
+
+    def test_schedule_registration_needs_preview_and_approval(self) -> None:
+        job = self._saved_job()
+        with patch.object(gui_module, "run_link_job", return_value=SimpleNamespace(scanned=1, changed=1)), \
+             patch.object(self.app, "run_async", side_effect=self._sync_run):
+            self.app.register_schedule()
+            self.scheduler.register.assert_not_called()
+            self.app.run_job(True)
+            self.app.register_schedule()
+        self.scheduler.register.assert_called_once()
+        self.assertTrue(self.approvals.approved(job))
+        # A changed rule is refused by the persisted approval gate even after
+        # closing the UI; no credential/network is involved.
+        self.jobs.upsert(replace(job, link_url="https://example.com/changed"))
+        self.assertFalse(self.approvals.approved(self.jobs.get(job.id)))
+
+    def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
+        # This checks real geometry computation, not visual legibility, colors,
+        # clipping in a physical monitor, or 100-150% Windows display scaling.
+        before = float(self.root.tk.call("tk", "scaling"))
+        try:
+            for factor in (1.0, 1.25, 1.5):
+                self.root.tk.call("tk", "scaling", factor)
+                self.root.update_idletasks()
+                self.assertGreater(self.app.notebook.winfo_reqwidth(), 200)
+                self.assertGreater(self.app.jobs_list.winfo_reqheight(), 20)
+                self.assertGreater(self.app.home_tab.winfo_reqheight(), 100)
+        finally:
+            self.root.tk.call("tk", "scaling", before)
+
+
+if __name__ == "__main__":
+    unittest.main()
