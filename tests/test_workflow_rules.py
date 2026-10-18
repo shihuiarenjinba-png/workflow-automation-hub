@@ -26,6 +26,13 @@ class RuleTests(unittest.TestCase):
             cfg["conditions"][0]["text"] = "declined"
             self.assertEqual(evaluate_rules(cfg, base), (False, "condition_1_not_met"))
 
+    def test_invalid_later_condition_not_hidden_by_missing_trigger(self):
+        with tempfile.TemporaryDirectory() as name:
+            cfg = {"trigger": {"type": "file_exists", "path": "missing"},
+                   "conditions": [{"type": "text_contains", "path": "x", "text": ""}]}
+            with self.assertRaises(RuleError):
+                evaluate_rules(cfg, Path(name))
+
     def test_reject_escape(self):
         with tempfile.TemporaryDirectory() as name:
             with self.assertRaises(RuleError):
