@@ -33,6 +33,22 @@ class FirstRunSafeFlowTests(unittest.TestCase):
         self.assertTrue(needs_save(saved, edited))
         self.assertFalse(needs_save(saved, replace(saved)))
 
+    def test_schedule_time_only_does_not_invalidate_content_preview(self) -> None:
+        from automation_hub.models import ScheduleSpec
+
+        original = make_job()
+        updated_schedule = replace(
+            original,
+            schedule=ScheduleSpec(kind="daily", time="09:15"),
+        )
+        self.assertEqual(job_revision(original), job_revision(updated_schedule))
+        self.assertTrue(needs_save(original, updated_schedule) is False)
+
+    def test_blog_change_always_invalidates_preview(self) -> None:
+        original = make_job()
+        switched = replace(original, blog_id="another-blog")
+        self.assertNotEqual(job_revision(original), job_revision(switched))
+
     def test_different_job_rejects_other_job_preview(self) -> None:
         original = make_job()
         alternative = make_job(id="another")
