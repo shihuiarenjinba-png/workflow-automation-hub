@@ -123,18 +123,20 @@ def main() -> int:
                 ("ja-jobs-150", 2, "ja", 1.5),
                 ("en-home", 0, "en", 1.0),
             ]
+            baseline_scaling = float(root.tk.call("tk", "scaling"))
             last_scaling = None
             for name, tab, lang, scaling in layouts:
                 try:
-                    # Simulated scaling is not a physical monitor DPI test.
-                    # Rebuild widgets after changing scale: otherwise the
-                    # screenshot can be byte-identical to the 100% capture.
-                    if scaling != last_scaling:
-                        root.tk.call("tk", "scaling", scaling)
+                    # A 100% comparison means the runner's native DPI scale,
+                    # not Tk's absolute 1.0 (~72 DPI). Simulate 150% relative
+                    # to that baseline, then rebuild all widgets.
+                    actual_scaling = baseline_scaling * scaling
+                    if actual_scaling != last_scaling:
+                        root.tk.call("tk", "scaling", actual_scaling)
                         app.build_ui()
                         app.selected_job_id = sample.id
                         app.load_job(sample.id)
-                        last_scaling = scaling
+                        last_scaling = actual_scaling
                     target_locale = "English" if lang == "en" else "日本語"
                     if app.language_var.get() != target_locale:
                         app.language_var.set(target_locale)
@@ -145,7 +147,8 @@ def main() -> int:
                     frame = [app.home_tab, app.google_tab, app.jobs_tab,
                              app.schedule_tab, app.compliance_tab][tab]
                     data = capture(root, output / f"{name}.png")
-                    data.update({"tab": tab, "locale": lang, "tk_scaling": scaling,
+                    data.update({"tab": tab, "locale": lang, "relative_scaling": scaling,
+                                 "tk_scaling": actual_scaling,
                                  "requested_width": frame.winfo_reqwidth(),
                                  "visible_width": frame.winfo_width(),
                                  "clipped_horizontally": frame.winfo_reqwidth() > frame.winfo_width() + 8})
