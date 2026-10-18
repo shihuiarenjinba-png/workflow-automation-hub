@@ -196,6 +196,32 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.jobs.get(job.id)
 
+    def test_primary_actions_are_grouped_in_two_rows(self) -> None:
+        actions = {
+            button.cget("text"): button
+            for button in self._buttons(self.app.jobs_tab)
+        }
+        expected_rows = {
+            "save_job": 0, "run_dry": 0,
+            "run_now": 1, "delete_job": 1,
+        }
+        for key, expected_row in expected_rows.items():
+            with self.subTest(key=key):
+                button = actions[self.app.t(key)]
+                self.assertEqual(int(button.grid_info()["row"]), expected_row)
+        scheduled = {
+            button.cget("text"): button
+            for button in self._buttons(self.app.schedule_tab)
+        }
+        for key, expected in (
+            ("save", 0), ("test_scheduler", 0),
+            ("register_schedule", 1), ("remove_schedule", 1),
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(
+                    int(scheduled[self.app.t(key)].grid_info()["row"]), expected
+                )
+
     def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
         # This checks real geometry computation, not visual legibility, colors,
         # clipping in a physical monitor, or 100-150% Windows display scaling.
