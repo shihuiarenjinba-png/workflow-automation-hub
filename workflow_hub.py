@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from file_ops_safe import FileOperationError, copy_or_move, write_text_safely
+from workflow_rules import RuleError, evaluate_rules
 
 
 class WorkflowError(RuntimeError):
@@ -91,6 +92,10 @@ class Runner:
         workflow = self.config.get("workflow")
         if not isinstance(workflow, list) or not workflow:
             raise WorkflowError("workflow must be a non-empty list")
+        eligible, reason = evaluate_rules(self.config, self.base_dir)
+        if not eligible:
+            self.log({"event": "workflow_skipped", "reason": reason})
+            return
         self.log({"event": "workflow_start", "dry_run": self.dry_run})
         for index, step in enumerate(workflow, start=1):
             if not isinstance(step, dict):
@@ -195,7 +200,7 @@ def main() -> int:
         config = json.loads(args.config.read_text(encoding="utf-8"))
         Runner(config, dry_run=args.dry_run).run()
         return 0
-    except (OSError, json.JSONDecodeError, KeyError, WorkflowError, FileOperationError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, WorkflowError, FileOperationError, RuleError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
