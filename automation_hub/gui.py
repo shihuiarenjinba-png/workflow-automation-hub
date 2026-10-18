@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections import Counter
 import queue
 import threading
 import uuid
 from pathlib import Path
-from tkinter import BooleanVar, Listbox, StringVar, Tk, filedialog, messagebox
+from tkinter import BooleanVar, Canvas, Listbox, StringVar, Tk, filedialog, messagebox
 from tkinter import ttk
 from typing import Any, Callable, TypeVar
 
@@ -35,6 +36,9 @@ class AutomationHubGUI:
             self.locale = "ja"
         self.blogs: list[dict[str, str]] = []
         self.blog_display_to_id: dict[str, str] = {}
+        # UI shows readable names; IDs stay in a separate index to avoid
+        # cryptic, clipped suffixes and safely handle identical job names.
+        self.job_row_ids: list[str] = []
         self.selected_job_id: str | None = None
         self.selected_schedule_job_id: str | None = None
         self.busy = False
@@ -77,6 +81,10 @@ class AutomationHubGUI:
         lang.pack(side="left", padx=(6, 12))
         lang.bind("<<ComboboxSelected>>", self.on_language_change)
         ttk.Label(top, text=self.t("desktop_note")).pack(side="left", padx=10)
+        self.operation_status = StringVar(
+            value=self.t("busy_processing") if self.busy else ""
+        )
+        ttk.Label(top, textvariable=self.operation_status).pack(side="right", padx=10)
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -217,15 +225,46 @@ class AutomationHubGUI:
 
     def _build_jobs_tab(self) -> None:
         outer = self.jobs_tab
-        left = ttk.Frame(outer)
-        left.pack(side="left", fill="y", padx=(0, 18))
-        right = ttk.Frame(outer)
+        # A vertical viewport keeps the preview and action buttons reachable
+        # on small screens and at high Windows text scaling.
+        self.job_canvas = Canvas(outer, highlightthickness=0, borderwidth=0)
+        self.job_scrollbar = ttk.Scrollbar(
+            outer, orient="vertical", command=self.job_canvas.yview
+        )
+        self.job_canvas.configure(yscrollcommand=self.job_scrollbar.set)
+        self.job_canvas.pack(side="left", fill="both", expand=True)
+        self.job_scrollbar.pack(side="right", fill="y")
+        inner = ttk.Frame(self.job_canvas)
+        self.job_inner = inner
+        window = self.job_canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind(
+            "<Configure>",
+            lambda _event: self.job_canvas.configure(
+                scrollregion=self.job_canvas.bbox("all")
+            ),
+        )
+        self.job_canvas.bind(
+            "<Configure>",
+            lambda event: self.job_canvas.itemconfigure(window, width=event.width),
+        )
+        left = ttk.Frame(inner)
+        left.pack(side="left", fill="y", padx=(0, 10))
+        right = ttk.Frame(inner)
         right.pack(side="left", fill="both", expand=True)
         ttk.Label(left, text=self.t("jobs")).pack(anchor="w")
-        self.jobs_list = Listbox(left, width=30, height=24, exportselection=False)
-        self.jobs_list.pack(fill="y", expand=True, pady=6)
+        list_holder = ttk.Frame(left)
+        list_holder.pack(fill="y", expand=True, pady=6)
+        self.jobs_list = Listbox(list_holder, width=22, height=16, exportselection=False)
+        self.jobs_list.pack(side="left", fill="y", expand=True)
+        list_scroll = ttk.Scrollbar(
+            list_holder, orient="vertical", command=self.jobs_list.yview
+        )
+        list_scroll.pack(side="right", fill="y")
+        self.jobs_list.configure(yscrollcommand=list_scroll.set)
         self.jobs_list.bind("<<ListboxSelect>>", self.on_job_select)
-        ttk.Button(left, text=self.t("new_job"), command=self.new_job).pack(fill="x", pady=(4, 0))
+        ttk.Button(left, text=self.t("new_job"), command=self.new_job).pack(
+            fill="x", pady=(4, 0)
+        )
 
         self.job_name_var = StringVar()
         self.blog_var = StringVar()
@@ -241,7 +280,7 @@ class AutomationHubGUI:
         for row, (key, variable) in enumerate(fields):
             ttk.Label(right, text=self.t(key)).grid(row=row, column=0, sticky="w", pady=5)
             if key == "blog":
-                self.blog_combo = ttk.Combobox(right, textvariable=variable, state="readonly", width=60)
+                self.blog_combo = ttk.Combobox(right, textvariable=variable, state="readonly", width=38)
                 self.blog_combo.grid(row=row, column=1, sticky="ew", padx=8)
             else:
                 ttk.Entry(right, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8)
@@ -349,6 +388,10 @@ class AutomationHubGUI:
         ttk.Label(self.compliance_tab, text=text, wraplength=850, justify="left").pack(anchor="w")
 
     def on_language_change(self, _event: object = None) -> None:
+        if self.busy:
+            self.language_var.set("日本語" if self.locale == "ja" else "English")
+            self._reject_if_busy()
+            return
         next_locale = "ja" if self.language_var.get() == "日本語" else "en"
         if next_locale == self.locale:
             return
@@ -385,13 +428,12 @@ class AutomationHubGUI:
         self.schedule_job_var.set(schedule_choice)
         self.notebook.select(tab_index)
         if self.selected_job_id:
-            for index in range(self.jobs_list.size()):
-                if self._id_from_display(self.jobs_list.get(index)) == self.selected_job_id:
-                    self.jobs_list.selection_set(index)
-                    break
+            self._restore_list_selection()
         self._refresh_home_status()
 
     def choose_credentials(self) -> None:
+        if self._reject_if_busy():
+            return
         path = filedialog.askopenfilename(
             parent=self.root,
             title=self.t("select_credentials"),
@@ -417,6 +459,16 @@ class AutomationHubGUI:
     def _set_busy(self, value: bool) -> None:
         self.busy = value
         self.root.config(cursor="watch" if value else "")
+        if hasattr(self, "operation_status"):
+            self.operation_status.set(self.t("busy_processing") if value else "")
+
+    def _reject_if_busy(self) -> bool:
+        if not self.busy:
+            return False
+        messagebox.showinfo(
+            self.t("info_title"), self.t("busy_processing"), parent=self.root
+        )
+        return True
 
     def run_async(self, func: Callable[[], T], on_success: Callable[[T], None]) -> None:
         if self.busy:
@@ -514,6 +566,8 @@ class AutomationHubGUI:
                     self.blog_var.set(mapped)
 
     def disconnect_google(self) -> None:
+        if self._reject_if_busy():
+            return
         if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_disconnect")):
             return
         try:
@@ -527,6 +581,8 @@ class AutomationHubGUI:
             messagebox.showerror(self.t("error_title"), str(exc))
 
     def remove_google_config(self) -> None:
+        if self._reject_if_busy():
+            return
         if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_remove_oauth")):
             return
         try:
@@ -553,6 +609,7 @@ class AutomationHubGUI:
         except JobStoreError as exc:
             if hasattr(self, "jobs_list"):
                 self.jobs_list.delete(0, "end")
+                self.job_row_ids = []
             if hasattr(self, "schedule_job_combo"):
                 self.schedule_job_combo["values"] = []
             self._refresh_home_status()
@@ -561,8 +618,17 @@ class AutomationHubGUI:
             return
         if hasattr(self, "jobs_list"):
             self.jobs_list.delete(0, "end")
+            self.job_row_ids = []
+            totals = Counter(job.name for job in jobs)
+            displayed: dict[str, int] = {}
             for job in jobs:
-                self.jobs_list.insert("end", f"{job.name} [{job.id}]")
+                displayed[job.name] = displayed.get(job.name, 0) + 1
+                label = (
+                    job.name if totals[job.name] == 1
+                    else f"{job.name} ({displayed[job.name]}/{totals[job.name]})"
+                )
+                self.jobs_list.insert("end", label)
+                self.job_row_ids.append(job.id)
             self._restore_list_selection()
         if hasattr(self, "schedule_job_combo"):
             self.schedule_job_combo["values"] = [f"{job.name} [{job.id}]" for job in jobs]
@@ -594,13 +660,13 @@ class AutomationHubGUI:
         self.jobs_list.selection_clear(0, "end")
         if self.selected_job_id is None:
             return
-        for index in range(self.jobs_list.size()):
-            if self._id_from_display(self.jobs_list.get(index)) == self.selected_job_id:
+        for index, job_id in enumerate(self.job_row_ids):
+            if job_id == self.selected_job_id:
                 self.jobs_list.selection_set(index)
                 break
 
     def new_job(self, *, force: bool = False) -> None:
-        if not force and not self._confirm_discard_input():
+        if not force and (self._reject_if_busy() or not self._confirm_discard_input()):
             return
         self.selected_job_id = None
         self.job_name_var.set("")
@@ -620,10 +686,17 @@ class AutomationHubGUI:
         return display
 
     def on_job_select(self, _event: object = None) -> None:
+        if self.busy:
+            self._restore_list_selection()
+            self._reject_if_busy()
+            return
         selection = self.jobs_list.curselection()
         if not selection:
             return
-        next_id = self._id_from_display(self.jobs_list.get(selection[0]))
+        if selection[0] >= len(self.job_row_ids):
+            self._restore_list_selection()
+            return
+        next_id = self.job_row_ids[selection[0]]
         if next_id == self.selected_job_id:
             return
         if not self._confirm_discard_input():
@@ -669,6 +742,8 @@ class AutomationHubGUI:
         )
 
     def save_job(self) -> None:
+        if self._reject_if_busy():
+            return
         try:
             job = self._form_job()
             self.job_store.upsert(job)
@@ -680,6 +755,8 @@ class AutomationHubGUI:
             messagebox.showerror(self.t("error_title"), str(exc))
 
     def delete_job(self) -> None:
+        if self._reject_if_busy():
+            return
         if not self.selected_job_id:
             messagebox.showinfo(self.t("info_title"), self.t("select_job_first"))
             return
@@ -728,6 +805,11 @@ class AutomationHubGUI:
                 self.t("warning_title"), self.t("confirm_run"), parent=self.root
             ):
                 return
+            # A write may partly succeed remotely and then lose its response.
+            # Consume this preview BEFORE attempting a mutating request,
+            # not after a success callback that might never arrive.
+            self.preview_revision = None
+            self._refresh_home_status()
         self.run_async(
             lambda: run_link_job(self.google, job, dry_run=dry_run),
             lambda result: self._after_job_run(job, result, dry_run),
@@ -777,6 +859,8 @@ class AutomationHubGUI:
         )
 
     def save_schedule_to_job(self, *, show_feedback: bool = True) -> BloggerLinkJob | None:
+        if self._reject_if_busy():
+            return None
         display = self.schedule_job_var.get()
         schedule_id = self._id_from_display(display) if display else self.selected_schedule_job_id
         if not schedule_id:

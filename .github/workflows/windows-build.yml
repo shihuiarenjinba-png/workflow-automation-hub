@@ -32,6 +32,15 @@ jobs:
         run: python -m pip check
       - name: Unit tests / ユニットテスト
         run: python -m unittest discover -s tests -v
+      - name: Capture GUI review evidence / GUI画面証跡
+        run: python tools/capture_gui_review.py
+      - name: Upload sanitized GUI screenshots / 模擬画面の証跡を保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkflowAutomationHub-GUI-Review
+          path: gui-review-evidence/
+          if-no-files-found: warn
       - name: Source self-test / ソース自己診断
         run: python desktop_app.py --self-test
       - name: Source diagnostics privacy check / 診断レポート確認

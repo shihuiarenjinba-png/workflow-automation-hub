@@ -109,12 +109,10 @@ class WindowsGuiSmokeTests(unittest.TestCase):
             call.assert_not_called()
         gui_module.messagebox.showwarning.assert_called()
         gui_module.messagebox.askyesno.return_value = False
-        for index in range(self.app.jobs_list.size()):
-            if "other" in self.app.jobs_list.get(index):
-                self.app.jobs_list.selection_clear(0, "end")
-                self.app.jobs_list.selection_set(index)
-                self.app.on_job_select()
-                break
+        index = self.app.job_row_ids.index(other.id)
+        self.app.jobs_list.selection_clear(0, "end")
+        self.app.jobs_list.selection_set(index)
+        self.app.on_job_select()
         self.assertEqual(self.app.selected_job_id, old.id)
         self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved")
 
@@ -133,6 +131,19 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         self.assertEqual(remote.call_count, 2)
         self.assertEqual([x.kwargs["dry_run"] for x in remote.call_args_list], [True, False])
         self.assertEqual(remote.call_args_list[-1].args[1].id, job.id)
+
+    def test_duplicate_display_names_keep_distinct_internal_job_ids(self) -> None:
+        first = self._saved_job(name="Same name")
+        second = replace(first, id="another-id")
+        self.jobs.upsert(second)
+        self.app.refresh_jobs()
+        self.assertEqual(self.app.jobs_list.get(0), "Same name (1/2)")
+        self.assertEqual(self.app.jobs_list.get(1), "Same name (2/2)")
+        self.assertEqual(self.app.job_row_ids, [first.id, second.id])
+        self.app.jobs_list.selection_clear(0, "end")
+        self.app.jobs_list.selection_set(1)
+        self.app.on_job_select()
+        self.assertEqual(self.app.selected_job_id, second.id)
 
     def test_locale_change_preserves_current_unsaved_edits(self) -> None:
         job = self._saved_job()
@@ -221,6 +232,81 @@ class WindowsGuiSmokeTests(unittest.TestCase):
                 self.assertEqual(
                     int(scheduled[self.app.t(key)].grid_info()["row"]), expected
                 )
+
+    def test_failed_live_write_consumes_preview_and_needs_new_dry_run(self) -> None:
+        self._saved_job()
+        attempts = []
+        error = OSError("response lost after remote post update")
+
+        def simulated_async(operation, on_success):
+            try:
+                on_success(operation())
+            except OSError:
+                # Mirrors the worker path: the failure has no success callback.
+                attempts.append("uncertain")
+
+        def remote(_connector, _job, *, dry_run):
+            attempts.append("preview" if dry_run else "write")
+            if not dry_run:
+                raise error
+            return SimpleNamespace(scanned=2, changed=1)
+
+        with patch.object(gui_module, "run_link_job", side_effect=remote), \
+             patch.object(self.app, "run_async", side_effect=simulated_async):
+            self.app.run_job(True)
+            self.assertIsNotNone(self.app.preview_revision)
+            self.app.run_job(False)
+            self.assertIsNone(self.app.preview_revision)
+            self.app.run_job(False)
+        self.assertEqual(attempts, ["preview", "write", "uncertain"])
+        gui_module.messagebox.showwarning.assert_called()
+
+    def test_cancelled_live_confirmation_keeps_preview_without_writing(self) -> None:
+        self._saved_job()
+        with patch.object(gui_module, "run_link_job", return_value=SimpleNamespace(scanned=1, changed=1)), \
+             patch.object(self.app, "run_async", side_effect=self._sync_run):
+            self.app.run_job(True)
+            approved = self.app.preview_revision
+            gui_module.messagebox.askyesno.return_value = False
+            self.app.run_job(False)
+            self.assertEqual(self.app.preview_revision, approved)
+
+    def test_busy_worker_blocks_edits_deletion_and_locale_switch(self) -> None:
+        original = self._saved_job()
+        self.app._set_busy(True)
+        try:
+            self.app.link_var.set("https://example.com/unsaved-change")
+            self.app.save_job()
+            self.app.delete_job()
+            self.app.new_job()
+            self.assertEqual(self.jobs.get(original.id).link_url, original.link_url)
+            self.assertEqual(self.app.selected_job_id, original.id)
+            self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved-change")
+            self.app.language_var.set("English")
+            self.app.on_language_change()
+            self.assertEqual(self.app.locale, "ja")
+            self.assertEqual(self.app.language_var.get(), "日本語")
+            self.assertIn(self.app.t("busy_processing"), self.app.operation_status.get())
+        finally:
+            self.app._set_busy(False)
+        self.assertEqual(self.app.operation_status.get(), "")
+        self.assertGreaterEqual(gui_module.messagebox.showinfo.call_count, 4)
+
+    def test_high_dpi_editor_can_scroll_to_the_last_section(self) -> None:
+        self._saved_job()
+        old_scale = float(self.root.tk.call("tk", "scaling"))
+        try:
+            self.root.tk.call("tk", "scaling", old_scale * 1.5)
+            self.app.build_ui()
+            self.app.load_job("test-rule")
+            self.app.notebook.select(self.app.jobs_tab)
+            self.root.update_idletasks()
+            self.app.job_canvas.yview_moveto(1.0)
+            self.root.update_idletasks()
+            self.assertAlmostEqual(self.app.job_canvas.yview()[1], 1.0, places=2)
+            self.assertGreater(self.app.job_scrollbar.winfo_exists(), 0)
+        finally:
+            self.root.tk.call("tk", "scaling", old_scale)
 
     def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
         # This checks real geometry computation, not visual legibility, colors,
