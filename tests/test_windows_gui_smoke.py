@@ -109,12 +109,10 @@ class WindowsGuiSmokeTests(unittest.TestCase):
             call.assert_not_called()
         gui_module.messagebox.showwarning.assert_called()
         gui_module.messagebox.askyesno.return_value = False
-        for index in range(self.app.jobs_list.size()):
-            if "other" in self.app.jobs_list.get(index):
-                self.app.jobs_list.selection_clear(0, "end")
-                self.app.jobs_list.selection_set(index)
-                self.app.on_job_select()
-                break
+        index = self.app.job_row_ids.index(other.id)
+        self.app.jobs_list.selection_clear(0, "end")
+        self.app.jobs_list.selection_set(index)
+        self.app.on_job_select()
         self.assertEqual(self.app.selected_job_id, old.id)
         self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved")
 
@@ -133,6 +131,19 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         self.assertEqual(remote.call_count, 2)
         self.assertEqual([x.kwargs["dry_run"] for x in remote.call_args_list], [True, False])
         self.assertEqual(remote.call_args_list[-1].args[1].id, job.id)
+
+    def test_duplicate_display_names_keep_distinct_internal_job_ids(self) -> None:
+        first = self._saved_job(name="Same name")
+        second = replace(first, id="another-id")
+        self.jobs.upsert(second)
+        self.app.refresh_jobs()
+        self.assertEqual(self.app.jobs_list.get(0), "Same name")
+        self.assertEqual(self.app.jobs_list.get(1), "Same name")
+        self.assertEqual(self.app.job_row_ids, [first.id, second.id])
+        self.app.jobs_list.selection_clear(0, "end")
+        self.app.jobs_list.selection_set(1)
+        self.app.on_job_select()
+        self.assertEqual(self.app.selected_job_id, second.id)
 
     def test_locale_change_preserves_current_unsaved_edits(self) -> None:
         job = self._saved_job()
