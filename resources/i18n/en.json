@@ -124,5 +124,7 @@
   "confirm_schedule_changes": "This job will run automatically at the scheduled times and may change Blogger posts. Have you reviewed its scope and link destination in a preview? Register it?",
   "confirm_discard_edits": "You have unsaved changes. Discard them and open another rule?",
   "schedule_advanced_notice": "Registered jobs automatically edit Blogger posts while you are logged into Windows. Before enabling them, preview the rule and verify the target blog and link destination.",
-  "google_connection_failed": "Blogger API connection check failed. Verify Google credentials and network access."
+  "google_connection_failed": "Blogger API connection check failed. Verify Google credentials and network access.",
+  "job_action_title": "Save, preview, then apply",
+  "schedule_action_title": "Windows scheduling actions"
 }
