@@ -67,3 +67,36 @@
 The repository does not generate a ZIP automatically. ZIP creation is fail-closed until the formal product LICENSE, committed dependency evidence, owner-machine/real-Google acceptance, and exact-commit approval gates are completed.
 
 mainへ販売版としてマージする判断は、上記の商用ゲート完了後に行います。
+
+## Beginner GUI and recurring-write approval gates (2026-10-18 branch)
+
+The following items are **new acceptance gates**, not a declaration of a
+passed Windows release. Existing checked items above describe the older
+base branch; they must be revalidated for this branch at its exact SHA.
+
+- [x] Offline pure-logic tests: 22 PASS locally against SHA-verified copies of models.py, ui_flow.py, schedule_approval.py and their two test files (Python 3.13).
+- [x] Both translation dictionaries contain the the same set of keys; all explicitly referenced literal GUI keys are present (dynamic home_state_ prefix resolved by defined variants).
+- [ ] Run `python -m unittest discover -s tests -v` on the exact committed checkout on Windows 11 and verify no regressions from preexisting tests.
+- [ ] Run `python -m unittest discover -s tests -p test_first_run_gui_contract.py -v` on the exact branch; AST/headless checks are committed but not locally executed.
+- [ ] Verify the Start Here screen clearly describes Blogger link insertion, not a general-purpose workflow.
+- [ ] Click Step 1 → Google setup, Step 2 → Blogger link rule, Step 3 → Preview/Live; every button must reach the intended screen.
+- [ ] Verify Google OAuth token presence alone displays **not verified**. Connection check failures must not show verified status.
+- [ ] Validate Google first-time buttons and management buttons do not overlap at 100/125/150% Windows scaling.
+- [ ] Create/edit a rule: the displayed action explanation must match the actual blog/text/URL/max-posts.
+- [ ] Change a rule but do not save; confirm Preview and Live refuse to use stale persisted settings.
+- [ ] Change the selected rule with unsaved edits and reject the discard prompt; confirm the original rule stays selected with all edits intact.
+- [ ] Switch Japanese→English→Japanese while editing; confirm input, selected rule and selected tab survive.
+- [ ] Fail a Dry Run, confirm Live stays blocked. Change the link after a successful preview and confirm a fresh preview is mandatory.
+- [ ] Complete a successful controlled Dry Run and one user-confirmed live update, then confirm a second write requires another Dry Run.
+- [ ] Choose a different job in Schedule without altering the job editor's selected rule.
+- [ ] Schedule registration before preview must fail. Registration after preview and explicit warning must succeed on test Windows.
+- [ ] Confirm `schedule_approvals.json` contains only job IDs/digests (no posts, URLs, OAuth tokens, or API keys).
+- [ ] Edit a previously approved/scheduled job and let Windows launch its saved task; verify **no Blogger update** and the runner reports unapproved.
+- [ ] Confirm old schedules without this branch's approval stamp fail closed until re-preview and re-registration.
+- [ ] Corrupt/delete approval JSON and simulate permission errors; verify no remote write and a clear diagnostic.
+- [ ] Remove a scheduled job; confirm the approval is revoked and no future automatic write runs.
+- [ ] Test user-visible crash/error handling and focus/disabled controls after asynchronous exceptions.
+- [ ] Run a dedicated non-production Google Blogger account for every live side-effect test; never test by writing to a customer blog.
+
+**Current verdict: HOLD.** GitHub-hosted GUI/Windows runs and real Blogger verification have not passed on this branch. Do not merge, package or market it as release-ready.
+
