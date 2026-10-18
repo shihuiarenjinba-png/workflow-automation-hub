@@ -113,5 +113,11 @@
   "preview_required_before_live": "Run 'Preview (no changes)' first. Repeat the preview after changing or saving the job.",
   "busy_processing": "An operation is already in progress.",
   "home_state_api_verified": "Status: Blogger API connection verified in this session",
-  "oauth_saved_unverified": "Credentials saved; API connection not yet verified"
+  "oauth_saved_unverified": "Credentials saved; API connection not yet verified",
+  "google_first_setup": "First-time setup: follow these steps from left to right",
+  "google_first_setup_tip": "1) Import JSON → 2) Connect Google → 3) Test Connection. Then return to Start Here to create a rule.",
+  "google_management": "Other actions (connection management)",
+  "job_effect_title": "What this rule will do",
+  "job_effect_missing": "Enter match text and a link URL to see the action summary. Save the rule and preview real posts before updating.",
+  "job_effect_template": "Check up to {count} posts, find '{target}', and turn it into a link labeled '{anchor}' pointing to {url}. Posts with the same link, and other nonmatching posts, are skipped."
 }
