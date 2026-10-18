@@ -14,6 +14,7 @@ from .i18n import SUPPORTED_LOCALES, tr
 from .jobs import JobStore, JobStoreError
 from .models import BloggerLinkJob, ScheduleSpec
 from .scheduler import WindowsTaskScheduler
+from .schedule_approval import ScheduleApprovalStore
 from .settings import SettingsStore
 from .ui_flow import home_progress, job_revision, live_run_ready, needs_save
 
@@ -26,6 +27,7 @@ class AutomationHubGUI:
         self.settings_store = SettingsStore()
         self.job_store = JobStore()
         self.scheduler = WindowsTaskScheduler()
+        self.schedule_approvals = ScheduleApprovalStore()
         self.google = GoogleBloggerConnector()
         self.settings = self.settings_store.load()
         self.locale = str(self.settings.get("locale", "ja"))
@@ -658,6 +660,7 @@ class AutomationHubGUI:
             except Exception:
                 pass
             self.job_store.delete(job_id)
+            self.schedule_approvals.revoke(job_id)
             self.preview_revision = None
             self.selected_job_id = None
             self.new_job(force=True)
@@ -788,6 +791,8 @@ class AutomationHubGUI:
             return
         try:
             self.scheduler.register(job)
+            # Runner independently checks this review stamp on every live launch.
+            self.schedule_approvals.authorize(job)
             messagebox.showinfo(self.t("info_title"), self.t("schedule_registered"), parent=self.root)
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
@@ -803,6 +808,7 @@ class AutomationHubGUI:
             return
         try:
             self.scheduler.unregister(job_id)
+            self.schedule_approvals.revoke(job_id)
             messagebox.showinfo(self.t("info_title"), self.t("schedule_removed"), parent=self.root)
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
