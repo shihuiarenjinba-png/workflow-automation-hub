@@ -80,6 +80,10 @@ class AutomationHubGUI:
         lang.pack(side="left", padx=(6, 12))
         lang.bind("<<ComboboxSelected>>", self.on_language_change)
         ttk.Label(top, text=self.t("desktop_note")).pack(side="left", padx=10)
+        self.operation_status = StringVar(
+            value=self.t("busy_processing") if self.busy else ""
+        )
+        ttk.Label(top, textvariable=self.operation_status).pack(side="right", padx=10)
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -352,6 +356,10 @@ class AutomationHubGUI:
         ttk.Label(self.compliance_tab, text=text, wraplength=850, justify="left").pack(anchor="w")
 
     def on_language_change(self, _event: object = None) -> None:
+        if self.busy:
+            self.language_var.set("日本語" if self.locale == "ja" else "English")
+            self._reject_if_busy()
+            return
         next_locale = "ja" if self.language_var.get() == "日本語" else "en"
         if next_locale == self.locale:
             return
@@ -392,6 +400,8 @@ class AutomationHubGUI:
         self._refresh_home_status()
 
     def choose_credentials(self) -> None:
+        if self._reject_if_busy():
+            return
         path = filedialog.askopenfilename(
             parent=self.root,
             title=self.t("select_credentials"),
@@ -417,6 +427,16 @@ class AutomationHubGUI:
     def _set_busy(self, value: bool) -> None:
         self.busy = value
         self.root.config(cursor="watch" if value else "")
+        if hasattr(self, "operation_status"):
+            self.operation_status.set(self.t("busy_processing") if value else "")
+
+    def _reject_if_busy(self) -> bool:
+        if not self.busy:
+            return False
+        messagebox.showinfo(
+            self.t("info_title"), self.t("busy_processing"), parent=self.root
+        )
+        return True
 
     def run_async(self, func: Callable[[], T], on_success: Callable[[T], None]) -> None:
         if self.busy:
@@ -514,6 +534,8 @@ class AutomationHubGUI:
                     self.blog_var.set(mapped)
 
     def disconnect_google(self) -> None:
+        if self._reject_if_busy():
+            return
         if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_disconnect")):
             return
         try:
@@ -527,6 +549,8 @@ class AutomationHubGUI:
             messagebox.showerror(self.t("error_title"), str(exc))
 
     def remove_google_config(self) -> None:
+        if self._reject_if_busy():
+            return
         if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_remove_oauth")):
             return
         try:
@@ -603,7 +627,7 @@ class AutomationHubGUI:
                 break
 
     def new_job(self, *, force: bool = False) -> None:
-        if not force and not self._confirm_discard_input():
+        if not force and (self._reject_if_busy() or not self._confirm_discard_input()):
             return
         self.selected_job_id = None
         self.job_name_var.set("")
@@ -623,6 +647,10 @@ class AutomationHubGUI:
         return display
 
     def on_job_select(self, _event: object = None) -> None:
+        if self.busy:
+            self._restore_list_selection()
+            self._reject_if_busy()
+            return
         selection = self.jobs_list.curselection()
         if not selection:
             return
@@ -675,6 +703,8 @@ class AutomationHubGUI:
         )
 
     def save_job(self) -> None:
+        if self._reject_if_busy():
+            return
         try:
             job = self._form_job()
             self.job_store.upsert(job)
@@ -686,6 +716,8 @@ class AutomationHubGUI:
             messagebox.showerror(self.t("error_title"), str(exc))
 
     def delete_job(self) -> None:
+        if self._reject_if_busy():
+            return
         if not self.selected_job_id:
             messagebox.showinfo(self.t("info_title"), self.t("select_job_first"))
             return
@@ -788,6 +820,8 @@ class AutomationHubGUI:
         )
 
     def save_schedule_to_job(self, *, show_feedback: bool = True) -> BloggerLinkJob | None:
+        if self._reject_if_busy():
+            return None
         display = self.schedule_job_var.get()
         schedule_id = self._id_from_display(display) if display else self.selected_schedule_job_id
         if not schedule_id:
