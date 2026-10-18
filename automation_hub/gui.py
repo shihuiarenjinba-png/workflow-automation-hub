@@ -239,7 +239,7 @@ class AutomationHubGUI:
         for row, (key, variable) in enumerate(fields):
             ttk.Label(right, text=self.t(key)).grid(row=row, column=0, sticky="w", pady=5)
             if key == "blog":
-                self.blog_combo = ttk.Combobox(right, textvariable=variable, state="normal", width=60)
+                self.blog_combo = ttk.Combobox(right, textvariable=variable, state="readonly", width=60)
                 self.blog_combo.grid(row=row, column=1, sticky="ew", padx=8)
             else:
                 ttk.Entry(right, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8)
@@ -522,7 +522,40 @@ class AutomationHubGUI:
             self.schedule_job_combo["values"] = [f"{job.name} [{job.id}]" for job in jobs]
         self._refresh_home_status()
 
+    def _visible_job_dirty(self) -> bool:
+        if not self.selected_job_id:
+            return any((
+                self.job_name_var.get().strip(),
+                self.blog_var.get().strip(),
+                self.target_var.get().strip(),
+                self.anchor_var.get().strip(),
+                self.link_var.get().strip(),
+            ))
+        try:
+            return needs_save(self.job_store.get(self.selected_job_id), self._form_job())
+        except Exception:
+            # An invalid partial edit is still unsaved work worth protecting.
+            return True
+
+    def _confirm_discard_input(self) -> bool:
+        if not self._visible_job_dirty():
+            return True
+        return messagebox.askyesno(
+            self.t("warning_title"), self.t("confirm_discard_edits"), parent=self.root
+        )
+
+    def _restore_list_selection(self) -> None:
+        self.jobs_list.selection_clear(0, "end")
+        if self.selected_job_id is None:
+            return
+        for index in range(self.jobs_list.size()):
+            if self._id_from_display(self.jobs_list.get(index)) == self.selected_job_id:
+                self.jobs_list.selection_set(index)
+                break
+
     def new_job(self) -> None:
+        if not self._confirm_discard_input():
+            return
         self.selected_job_id = None
         self.job_name_var.set("")
         self.blog_var.set("")
@@ -532,6 +565,7 @@ class AutomationHubGUI:
         self.max_posts_var.set("50")
         self.enabled_var.set(True)
         self.jobs_list.selection_clear(0, "end")
+        self._refresh_home_status()
 
     @staticmethod
     def _id_from_display(display: str) -> str:
@@ -543,12 +577,19 @@ class AutomationHubGUI:
         selection = self.jobs_list.curselection()
         if not selection:
             return
-        self.selected_job_id = self._id_from_display(self.jobs_list.get(selection[0]))
+        next_id = self._id_from_display(self.jobs_list.get(selection[0]))
+        if next_id == self.selected_job_id:
+            return
+        if not self._confirm_discard_input():
+            self._restore_list_selection()
+            return
         try:
-            self.load_job(self.selected_job_id)
+            self.load_job(next_id)
+            self.selected_job_id = next_id
             self._refresh_home_status()
         except Exception as exc:
-            messagebox.showerror(self.t("error_title"), str(exc))
+            self._restore_list_selection()
+            messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
 
     def load_job(self, job_id: str) -> None:
         job = self.job_store.get(job_id)
