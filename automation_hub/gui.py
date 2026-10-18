@@ -34,6 +34,7 @@ class AutomationHubGUI:
         self.blogs: list[dict[str, str]] = []
         self.blog_display_to_id: dict[str, str] = {}
         self.selected_job_id: str | None = None
+        self.selected_schedule_job_id: str | None = None
         self.busy = False
         self.preview_revision: str | None = None
         self.google_verified = False  # OAuth token presence is not a verified API connection.
@@ -662,14 +663,17 @@ class AutomationHubGUI:
         display = self.schedule_job_var.get()
         if display:
             try:
-                self.selected_job_id = self._id_from_display(display)
-                self._load_schedule_fields(self.job_store.get(self.selected_job_id))
+                # Scheduler selection must not silently change the job editor's
+                # selected rule (and accidentally apply unsaved values to it).
+                self.selected_schedule_job_id = self._id_from_display(display)
+                self._load_schedule_fields(self.job_store.get(self.selected_schedule_job_id))
             except Exception as exc:
-                messagebox.showerror(self.t("error_title"), str(exc))
+                messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
 
     def _load_schedule_fields(self, job: BloggerLinkJob) -> None:
         if not hasattr(self, "schedule_kind_var"):
             return
+        self.selected_schedule_job_id = job.id
         labels = {"daily": self.t("daily"), "weekly": self.t("weekly"), "logon": self.t("logon")}
         self.schedule_kind_var.set(labels.get(job.schedule.kind, self.t("daily")))
         self.schedule_time_var.set(job.schedule.time)
@@ -686,15 +690,13 @@ class AutomationHubGUI:
         )
 
     def save_schedule_to_job(self) -> BloggerLinkJob | None:
-        if not self.selected_job_id:
-            display = self.schedule_job_var.get()
-            if display:
-                self.selected_job_id = self._id_from_display(display)
-        if not self.selected_job_id:
-            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"))
+        display = self.schedule_job_var.get()
+        schedule_id = self._id_from_display(display) if display else self.selected_schedule_job_id
+        if not schedule_id:
+            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"), parent=self.root)
             return None
         try:
-            job = self.job_store.get(self.selected_job_id)
+            job = self.job_store.get(schedule_id)
             job.schedule = self._schedule_from_fields()
             self.job_store.upsert(job)
             self.refresh_jobs(show_error=False)
@@ -705,24 +707,45 @@ class AutomationHubGUI:
             return None
 
     def register_schedule(self) -> None:
+        display = self.schedule_job_var.get()
+        job_id = self._id_from_display(display) if display else self.selected_schedule_job_id
+        if not job_id:
+            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"), parent=self.root)
+            return
+        try:
+            saved = self.job_store.get(job_id)
+            if self.preview_revision != job_revision(saved):
+                messagebox.showwarning(
+                    self.t("warning_title"), self.t("preview_required_before_schedule"), parent=self.root
+                )
+                return
+        except Exception as exc:
+            messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
+            return
+        if not messagebox.askyesno(
+            self.t("warning_title"), self.t("confirm_schedule_changes"), parent=self.root
+        ):
+            return
         job = self.save_schedule_to_job()
         if job is None:
             return
         try:
             self.scheduler.register(job)
-            messagebox.showinfo(self.t("info_title"), self.t("schedule_registered"))
+            messagebox.showinfo(self.t("info_title"), self.t("schedule_registered"), parent=self.root)
         except Exception as exc:
-            messagebox.showerror(self.t("error_title"), str(exc))
+            messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
 
     def remove_schedule(self) -> None:
-        if not self.selected_job_id:
-            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"))
+        display = self.schedule_job_var.get()
+        job_id = self._id_from_display(display) if display else self.selected_schedule_job_id
+        if not job_id:
+            messagebox.showinfo(self.t("info_title"), self.t("select_job_first"), parent=self.root)
             return
         try:
-            self.scheduler.unregister(self.selected_job_id)
-            messagebox.showinfo(self.t("info_title"), self.t("schedule_removed"))
+            self.scheduler.unregister(job_id)
+            messagebox.showinfo(self.t("info_title"), self.t("schedule_removed"), parent=self.root)
         except Exception as exc:
-            messagebox.showerror(self.t("error_title"), str(exc))
+            messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
 
     def test_scheduler(self) -> None:
         check = self.scheduler.check()
