@@ -123,5 +123,6 @@
   "preview_required_before_schedule": "定期実行を登録する前に、対象のジョブを保存して試運転してください。試運転で確認した内容と保存済みの設定が一致している必要があります。",
   "confirm_schedule_changes": "このジョブが指定のタイミングで自動実行され、Bloggerの記事を変更します。試運転の対象・リンク先を確認済みですか？登録しますか？",
   "confirm_discard_edits": "保存していない入力があります。変更を破棄して別のルールへ移りますか？",
-  "schedule_advanced_notice": "この設定を登録すると、Windowsログイン中にBlogger記事の編集が自動実行されます。記事への実変更が発生するため、先にルール画面で試運転して対象とリンク先を確認してください。"
+  "schedule_advanced_notice": "この設定を登録すると、Windowsログイン中にBlogger記事の編集が自動実行されます。記事への実変更が発生するため、先にルール画面で試運転して対象とリンク先を確認してください。",
+  "google_connection_failed": "Blogger APIの接続確認に失敗しました。認証情報とネットワーク接続を確認してください。"
 }
