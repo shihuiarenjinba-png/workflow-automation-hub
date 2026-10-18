@@ -1,0 +1,89 @@
+"""Store-draft identity and manifest regression guards (offline, stdlib only)."""
+import json
+from pathlib import Path
+import re
+import unittest
+import xml.etree.ElementTree as ET
+
+ROOT = Path(__file__).resolve().parents[1]
+DATA = ROOT / "store" / "product_identity.json"
+MANIFEST = ROOT / "store" / "AppxManifest.template.xml"
+BUILDER = ROOT / "store" / "build_msix_draft.ps1"
+WORKFLOW = ROOT / ".github" / "workflows" / "windows-build.yml"
+
+NAMESPACE = "http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+UAP10 = "http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+
+
+class StoreIdentityDraftTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.identity = json.loads(DATA.read_text(encoding="utf-8"))
+        cls.template = MANIFEST.read_text(encoding="utf-8")
+
+    def test_store_id_matches_owner_provided_partner_center(self):
+        self.assertEqual(self.identity["store_id"], "9P6SXJNNB5KK")
+        self.assertEqual(
+            self.identity["package_identity_name"],
+            "OkinawaDesktopTools.WorkflowAutomationHub",
+        )
+        self.assertEqual(
+            self.identity["publisher"],
+            "CN=46263F21-A700-41DB-8C9B-114C22FB82FC",
+        )
+        self.assertEqual(self.identity["publisher_display_name"], "Okinawa Desktop Tools")
+        self.assertEqual(
+            self.identity["package_family_name"],
+            "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgh58",
+        )
+
+    def test_never_confuse_product_draft_with_certified_package(self):
+        self.assertEqual(self.identity["store_status_at_capture"], "In draft")
+        self.assertIs(self.identity["submission_allowed"], False)
+
+    def test_valid_four_component_msix_version(self):
+        version = self.identity["initial_msix_version"]
+        self.assertRegex(version, r"^\d+\.\d+\.\d+\.0$")
+        self.assertTrue(all(int(x) <= 65535 for x in version.split(".")))
+
+    def test_generated_manifest_identity_and_runtime_contract(self):
+        replacements = {
+            "__PACKAGE_IDENTITY_NAME__": self.identity["package_identity_name"],
+            "__PUBLISHER__": self.identity["publisher"],
+            "__PUBLISHER_DISPLAY_NAME__": self.identity["publisher_display_name"],
+            "__VERSION__": self.identity["initial_msix_version"],
+        }
+        xmltext = self.template
+        for key, value in replacements.items():
+            self.assertIn(key, xmltext)
+            xmltext = xmltext.replace(key, value)
+        self.assertNotRegex(xmltext, r"__[A-Z_]+__")
+        root = ET.fromstring(xmltext)
+        ident = root.find(f"{{{NAMESPACE}}}Identity")
+        self.assertIsNotNone(ident)
+        self.assertEqual(ident.attrib["Name"], self.identity["package_identity_name"])
+        self.assertEqual(ident.attrib["Publisher"], self.identity["publisher"])
+        self.assertEqual(ident.attrib["Version"], self.identity["initial_msix_version"])
+        self.assertEqual(ident.attrib["ProcessorArchitecture"], "x64")
+        app = root.find(f".//{{{NAMESPACE}}}Application")
+        self.assertIsNotNone(app)
+        self.assertEqual(app.attrib[f"{{{UAP10}}}RuntimeBehavior"], "packagedClassicApp")
+        self.assertEqual(app.attrib[f"{{{UAP10}}}TrustLevel"], "mediumIL")
+        self.assertEqual(app.attrib["Executable"], "WorkflowAutomationHub.exe")
+        self.assertIsNotNone(root.find(".//{*}Capability[@Name='runFullTrust']"))
+        self.assertEqual(root.find(f"{{{NAMESPACE}}}Properties/{{{NAMESPACE}}}DisplayName").text, "Workflow Automation Hub")
+
+    def test_ci_uses_signed_off_identity_builder_not_raw_exe_as_msix(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("store/build_msix_draft.ps1", workflow)
+        self.assertIn("WorkflowAutomationHub-Store-MSIX-UNSIGNED-DRAFT", workflow)
+        builder = BUILDER.read_text(encoding="utf-8")
+        self.assertIn("MakeAppx.exe", builder)
+        self.assertIn("unpack /p", builder)
+        self.assertIn("manifest_identity_verified", builder)
+        self.assertIn("submission_allowed", builder)
+        self.assertNotIn("SALES_RELEASE_APPROVED.txt", builder)
+
+
+if __name__ == "__main__":
+    unittest.main()
