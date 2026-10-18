@@ -27,7 +27,7 @@ Googleアカウントを接続してブログを選び、検索文字列、表�
 - Windows タスク スケジューラによる任意の定期実行（ログオン中のみ）
 - 実行ログと、問題発生時のサポート診断機能
 
-**ご利用前に必要なもの:** Windows 10（バージョン2004以降）またはWindows 11、Google Bloggerで管理できるブログ、Google Cloudでご自身が用意したDesktop app形式のOAuthクライアント設定（JSON）、Blogger APIの有効化、接続時のインターネット環境。
+**ご利用前に必要なもの:** Windows PC（Windows 11を優先検証中。Windows 10 バージョン2004以降の対応は実機検証完了後に確定）、Google Bloggerで管理できるブログ、Google Cloudでご自身が用意したDesktop app形式のOAuthクライアント設定（JSON）、Blogger APIの有効化、接続時のインターネット環境。
 
 **機能上の制限:** 任意のAPI・ウェブサイトの自動化ツールではありません。記事本文の自動生成、AIによる記事執筆、記事ごとの全文変更差分プレビューは提供しません。定期実行はWindowsにログオン中に限られます。Google側の利用条件や認証設定は別途必要です。
 
@@ -53,7 +53,7 @@ Features:
 - Optional Windows Task Scheduler integration (signed-in users only)
 - Audit logs and privacy-conscious diagnostic reports
 
-**Setup required:** Windows 10 version 2004 or later, or Windows 11; a Blogger blog you manage; your own Google Cloud OAuth **Desktop app** JSON with Blogger API enabled; internet connectivity for Blogger operations.
+**Setup required:** Windows PC (Windows 11 validation prioritized; Windows 10 version 2004+ support remains unconfirmed pending physical validation); a Blogger blog you manage; your own Google Cloud OAuth **Desktop app** JSON with Blogger API enabled; internet connectivity for Blogger operations.
 
 **Limitations:** This is not a general-purpose API automation tool, AI writer, or content generator. The preview summarizes expected counts, not a full per-post diff. Scheduled jobs require a logged-in Windows user. Google Cloud setup and Google account authorization are provided by the customer.
 
