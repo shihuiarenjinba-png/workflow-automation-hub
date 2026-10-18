@@ -271,6 +271,27 @@ class WindowsGuiSmokeTests(unittest.TestCase):
             self.app.run_job(False)
             self.assertEqual(self.app.preview_revision, approved)
 
+    def test_busy_worker_blocks_edits_deletion_and_locale_switch(self) -> None:
+        original = self._saved_job()
+        self.app._set_busy(True)
+        try:
+            self.app.link_var.set("https://example.com/unsaved-change")
+            self.app.save_job()
+            self.app.delete_job()
+            self.app.new_job()
+            self.assertEqual(self.jobs.get(original.id).link_url, original.link_url)
+            self.assertEqual(self.app.selected_job_id, original.id)
+            self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved-change")
+            self.app.language_var.set("English")
+            self.app.on_language_change()
+            self.assertEqual(self.app.locale, "ja")
+            self.assertEqual(self.app.language_var.get(), "日本語")
+            self.assertIn(self.app.t("busy_processing"), self.app.operation_status.get())
+        finally:
+            self.app._set_busy(False)
+        self.assertEqual(self.app.operation_status.get(), "")
+        self.assertGreaterEqual(gui_module.messagebox.showinfo.call_count, 4)
+
     def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
         # This checks real geometry computation, not visual legibility, colors,
         # clipping in a physical monitor, or 100-150% Windows display scaling.
