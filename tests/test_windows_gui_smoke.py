@@ -292,6 +292,22 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         self.assertEqual(self.app.operation_status.get(), "")
         self.assertGreaterEqual(gui_module.messagebox.showinfo.call_count, 4)
 
+    def test_high_dpi_editor_can_scroll_to_the_last_section(self) -> None:
+        self._saved_job()
+        old_scale = float(self.root.tk.call("tk", "scaling"))
+        try:
+            self.root.tk.call("tk", "scaling", old_scale * 1.5)
+            self.app.build_ui()
+            self.app.load_job("test-rule")
+            self.app.notebook.select(self.app.jobs_tab)
+            self.root.update_idletasks()
+            self.app.job_canvas.yview_moveto(1.0)
+            self.root.update_idletasks()
+            self.assertAlmostEqual(self.app.job_canvas.yview()[1], 1.0, places=2)
+            self.assertGreater(self.app.job_scrollbar.winfo_exists(), 0)
+        finally:
+            self.root.tk.call("tk", "scaling", old_scale)
+
     def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
         # This checks real geometry computation, not visual legibility, colors,
         # clipping in a physical monitor, or 100-150% Windows display scaling.
