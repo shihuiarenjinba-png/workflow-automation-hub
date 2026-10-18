@@ -123,10 +123,18 @@ def main() -> int:
                 ("ja-jobs-150", 2, "ja", 1.5),
                 ("en-home", 0, "en", 1.0),
             ]
+            last_scaling = None
             for name, tab, lang, scaling in layouts:
                 try:
                     # Simulated scaling is not a physical monitor DPI test.
-                    root.tk.call("tk", "scaling", scaling)
+                    # Rebuild widgets after changing scale: otherwise the
+                    # screenshot can be byte-identical to the 100% capture.
+                    if scaling != last_scaling:
+                        root.tk.call("tk", "scaling", scaling)
+                        app.build_ui()
+                        app.selected_job_id = sample.id
+                        app.load_job(sample.id)
+                        last_scaling = scaling
                     target_locale = "English" if lang == "en" else "日本語"
                     if app.language_var.get() != target_locale:
                         app.language_var.set(target_locale)
