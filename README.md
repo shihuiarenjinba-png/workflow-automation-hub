@@ -44,3 +44,7 @@ python workflow_hub.py workflow.example.json
 - Schedule Trigger
 - Folder Trigger
 - GUI設定画面
+
+## Trigger → Condition → Action editor (improvement branch)
+
+Run `python workflow_gui.py`. The UI supports manual or local file-exists triggers; optional file-exists, extension and UTF-8 text-match conditions; and explicit copy/move/write-text/HTTPS-GET actions. The workflow evaluates the trigger and every condition before taking actions, logs skipped runs and respects the existing working-folder and allowed-host boundaries. Preview/Dry Run does not execute a real HTTP request or mutate files. This narrow GUI does **not** implement continuous scheduler service, multi-condition visual editing, OAuth or arbitrary shell commands. A separately developed, more extensive `feat/workflow-safe-stale-locks-20261018` Windows desktop implementation exists and must be reconciled before selecting the product release. The new improvement-branch GitHub Actions unittest/compile workflow passed on Linux and Windows, but this is not a real GUI/MSIX acceptance test. Store submission: **HOLD**.
