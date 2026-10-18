@@ -234,6 +234,7 @@ class AutomationHubGUI:
         self.job_canvas.pack(side="left", fill="both", expand=True)
         self.job_scrollbar.pack(side="right", fill="y")
         inner = ttk.Frame(self.job_canvas)
+        self.job_inner = inner
         window = self.job_canvas.create_window((0, 0), window=inner, anchor="nw")
         inner.bind(
             "<Configure>",
