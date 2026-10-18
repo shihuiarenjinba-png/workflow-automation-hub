@@ -138,6 +138,12 @@ class WorkflowWindow(ttk.Frame):
             return
         try:
             cfg = json.loads(Path(path).read_text(encoding="utf-8"))
+            allowed = {"base_dir", "log_path", "allow_hosts", "workflow",
+                       "trigger", "conditions"}
+            if set(cfg) - allowed or len(cfg.get("conditions", [])) > 1:
+                raise ValueError("Advanced settings cannot be edited here without data loss")
+            if cfg.get("log_path", "logs/workflow.jsonl") != "logs/workflow.jsonl":
+                raise ValueError("Custom audit paths require the advanced editor")
             Runner(cfg, dry_run=True).run()
             self.base.set(cfg["base_dir"])
             self.hosts.set(",".join(cfg.get("allow_hosts", [])))
