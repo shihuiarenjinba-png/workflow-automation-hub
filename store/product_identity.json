@@ -1,0 +1,14 @@
+{
+  "product_name": "Workflow Automation Hub",
+  "store_product_type": "MSIX or PWA app",
+  "store_status_at_capture": "In draft",
+  "store_id": "9P6SXJNNB5KK",
+  "package_identity_name": "OkinawaDesktopTools.WorkflowAutomationHub",
+  "publisher": "CN=46263F21-A700-41DB-8C9B-114C22FB82FC",
+  "publisher_display_name": "Okinawa Desktop Tools",
+  "package_family_name": "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgh58",
+  "initial_msix_version": "0.1.0.0",
+  "evidence": "Owner-provided Microsoft Partner Center View product identity screenshot, 2026-10-18",
+  "submission_allowed": false,
+  "notes": "Partner Center product draft exists; no actual MSIX package or successful certification was shown. Never merge, submit, or publish without explicit owner acceptance."
+}
