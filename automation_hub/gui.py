@@ -4,7 +4,7 @@ import queue
 import threading
 import uuid
 from pathlib import Path
-from tkinter import BooleanVar, Listbox, StringVar, Tk, filedialog, messagebox
+from tkinter import BooleanVar, Canvas, Listbox, StringVar, Tk, filedialog, messagebox
 from tkinter import ttk
 from typing import Any, Callable, TypeVar
 
@@ -224,15 +224,45 @@ class AutomationHubGUI:
 
     def _build_jobs_tab(self) -> None:
         outer = self.jobs_tab
-        left = ttk.Frame(outer)
-        left.pack(side="left", fill="y", padx=(0, 18))
-        right = ttk.Frame(outer)
+        # A vertical viewport keeps the preview and action buttons reachable
+        # on small screens and at high Windows text scaling.
+        self.job_canvas = Canvas(outer, highlightthickness=0, borderwidth=0)
+        self.job_scrollbar = ttk.Scrollbar(
+            outer, orient="vertical", command=self.job_canvas.yview
+        )
+        self.job_canvas.configure(yscrollcommand=self.job_scrollbar.set)
+        self.job_canvas.pack(side="left", fill="both", expand=True)
+        self.job_scrollbar.pack(side="right", fill="y")
+        inner = ttk.Frame(self.job_canvas)
+        window = self.job_canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind(
+            "<Configure>",
+            lambda _event: self.job_canvas.configure(
+                scrollregion=self.job_canvas.bbox("all")
+            ),
+        )
+        self.job_canvas.bind(
+            "<Configure>",
+            lambda event: self.job_canvas.itemconfigure(window, width=event.width),
+        )
+        left = ttk.Frame(inner)
+        left.pack(side="left", fill="y", padx=(0, 10))
+        right = ttk.Frame(inner)
         right.pack(side="left", fill="both", expand=True)
         ttk.Label(left, text=self.t("jobs")).pack(anchor="w")
-        self.jobs_list = Listbox(left, width=30, height=24, exportselection=False)
-        self.jobs_list.pack(fill="y", expand=True, pady=6)
+        list_holder = ttk.Frame(left)
+        list_holder.pack(fill="y", expand=True, pady=6)
+        self.jobs_list = Listbox(list_holder, width=22, height=16, exportselection=False)
+        self.jobs_list.pack(side="left", fill="y", expand=True)
+        list_scroll = ttk.Scrollbar(
+            list_holder, orient="vertical", command=self.jobs_list.yview
+        )
+        list_scroll.pack(side="right", fill="y")
+        self.jobs_list.configure(yscrollcommand=list_scroll.set)
         self.jobs_list.bind("<<ListboxSelect>>", self.on_job_select)
-        ttk.Button(left, text=self.t("new_job"), command=self.new_job).pack(fill="x", pady=(4, 0))
+        ttk.Button(left, text=self.t("new_job"), command=self.new_job).pack(
+            fill="x", pady=(4, 0)
+        )
 
         self.job_name_var = StringVar()
         self.blog_var = StringVar()
@@ -248,7 +278,7 @@ class AutomationHubGUI:
         for row, (key, variable) in enumerate(fields):
             ttk.Label(right, text=self.t(key)).grid(row=row, column=0, sticky="w", pady=5)
             if key == "blog":
-                self.blog_combo = ttk.Combobox(right, textvariable=variable, state="readonly", width=60)
+                self.blog_combo = ttk.Combobox(right, textvariable=variable, state="readonly", width=38)
                 self.blog_combo.grid(row=row, column=1, sticky="ew", padx=8)
             else:
                 ttk.Entry(right, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8)
