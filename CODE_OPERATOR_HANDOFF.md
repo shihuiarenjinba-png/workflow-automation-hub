@@ -73,3 +73,26 @@ Authenticode remains DEFERRED / NOT VERIFIED because the owner's signing path is
 ## Sales status
 
 This is now a reproducible, supportable RC packaging path. Sales mode remains deliberately fail-closed until the exact commit passes owner/manual acceptance and formal license/NOTICE gates.
+
+
+## 2026-10-18 Blogger duplicate-execution lock hardening (Draft PR)
+
+A pending code change makes stale lock reclamation **fail closed**:
+only an old lock with a known recorded PID that is *proven no longer running*
+may be reclaimed automatically. An old lock with a live, inaccessible or
+unparseable owner remains blocked. Windows PID liveness uses a limited-read
+kernel32 process query; do **not** use os.kill(pid, 0) on Windows. Locks contain
+a random ownership nonce; release refuses to remove a lock with a different
+nonce/process. This prevents an overlapping Blogger PATCH merely because a
+job ran longer than the old age threshold.
+
+If a crash leaves an old lock, DO NOT reflexively delete it. First confirm
+the previous job ended, check the Blogger account's remote state and local
+backup/audit results, then remove only that verified abandoned lock through
+a controlled maintenance procedure. Unknown remote PATCH outcomes must never
+be treated as proof of failure.
+
+New test_locks.py cases require exact-branch Windows CI PASS plus real Windows
+Task Scheduler/Google test-blog acceptance. Existing earlier CI success does
+not validate this follow-on branch. Commercial MSIX and licensing gates remain
+HOLD. Do not merge while a newer code operator may be editing this branch.
