@@ -119,5 +119,7 @@
   "google_management": "Other actions (connection management)",
   "job_effect_title": "What this rule will do",
   "job_effect_missing": "Enter match text and a link URL to see the action summary. Save the rule and preview real posts before updating.",
-  "job_effect_template": "Check up to {count} posts, find '{target}', and turn it into a link labeled '{anchor}' pointing to {url}. Posts with the same link, and other nonmatching posts, are skipped."
+  "job_effect_template": "Check up to {count} posts, find '{target}', and turn it into a link labeled '{anchor}' pointing to {url}. Posts with the same link, and other nonmatching posts, are skipped.",
+  "preview_required_before_schedule": "Save and preview the selected job before scheduling it. The saved Blogger write settings must match the successful preview.",
+  "confirm_schedule_changes": "This job will run automatically at the scheduled times and may change Blogger posts. Have you reviewed its scope and link destination in a preview? Register it?"
 }
