@@ -119,5 +119,7 @@
   "google_management": "その他の操作（接続管理）",
   "job_effect_title": "このルールを実行すると",
   "job_effect_missing": "検索する文字とリンク先URLを入力すると、変更内容の説明が表示されます。保存後は試運転で実際の記事を確認してください。",
-  "job_effect_template": "最大 {count} 件の記事から「{target}」を探し、見つかった文字を「{anchor}」というリンクにします。リンク先：{url}。同じリンクがある記事などは変更しません。"
+  "job_effect_template": "最大 {count} 件の記事から「{target}」を探し、見つかった文字を「{anchor}」というリンクにします。リンク先：{url}。同じリンクがある記事などは変更しません。",
+  "preview_required_before_schedule": "定期実行を登録する前に、対象のジョブを保存して試運転してください。試運転で確認した内容と保存済みの設定が一致している必要があります。",
+  "confirm_schedule_changes": "このジョブが指定のタイミングで自動実行され、Bloggerの記事を変更します。試運転の対象・リンク先を確認済みですか？登録しますか？"
 }
