@@ -62,3 +62,27 @@ def copy_or_move(source: Path, destination: Path, *, move: bool = False, overwri
         return {'source_sha256':before, 'destination_sha256':_sha256(dst), 'moved':move}
     finally:
         temp.unlink(missing_ok=True)
+
+
+def write_text_safely(destination: Path, content: str, *, overwrite: bool = False) -> None:
+    """Write a text file without ever truncating a previous file before success."""
+    dst = Path(destination)
+    if dst.is_symlink() or (dst.exists() and dst.is_dir()):
+        raise FileOperationError('Unsafe text destination')
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=dst.parent, prefix='.'+dst.name+'-pending-', suffix='.tmp')
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as output:
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        if overwrite:
+            os.replace(temp, dst)
+        else:
+            try:
+                os.link(temp, dst)
+            except FileExistsError as exc:
+                raise FileOperationError('Destination exists; existing text preserved') from exc
+    finally:
+        temp.unlink(missing_ok=True)
