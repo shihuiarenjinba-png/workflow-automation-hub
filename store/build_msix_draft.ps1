@@ -29,7 +29,11 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 $out = (Resolve-Path $out).Path
 $stage = Join-Path $out "msix-stage"
 $unpack = Join-Path $out "msix-roundtrip"
-foreach ($p in @($stage,$unpack)) { if (Test-Path $p) { Remove-Item -LiteralPath $p -Recurse -Force } }
+foreach ($p in @($stage,$unpack)) {
+    if (Test-Path -LiteralPath $p) {
+        throw "Existing MSIX staging evidence must not be overwritten: $p. Use a new OutputDirectory."
+    }
+}
 New-Item -ItemType Directory -Path (Join-Path $stage "Assets") -Force | Out-Null
 Copy-Item -LiteralPath $exe -Destination (Join-Path $stage "WorkflowAutomationHub.exe")
 $manifestText = Get-Content -LiteralPath (Join-Path $PSScriptRoot "AppxManifest.template.xml") -Raw -Encoding UTF8
@@ -94,7 +98,9 @@ $makeappx = Get-ChildItem -LiteralPath $kit -Recurse -Filter MakeAppx.exe -File 
 if ($null -eq $makeappx) { throw "x64 MakeAppx.exe not installed" }
 $msixName = "WorkflowAutomationHub_$($Version)_x64_StoreDraft_UNSIGNED.msix"
 $msix = Join-Path $out $msixName
-if (Test-Path $msix) { Remove-Item -LiteralPath $msix -Force }
+if (Test-Path -LiteralPath $msix) {
+    throw "Existing MSIX must not be overwritten: $msix. Use a new OutputDirectory."
+}
 & $makeappx.FullName pack /v /h SHA256 /d $stage /p $msix
 if ($LASTEXITCODE -ne 0) { throw "MakeAppx pack FAILED: $LASTEXITCODE" }
 New-Item -ItemType Directory -Path $unpack -Force | Out-Null
