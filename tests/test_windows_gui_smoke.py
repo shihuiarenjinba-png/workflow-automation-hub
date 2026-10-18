@@ -222,6 +222,44 @@ class WindowsGuiSmokeTests(unittest.TestCase):
                     int(scheduled[self.app.t(key)].grid_info()["row"]), expected
                 )
 
+    def test_failed_live_write_consumes_preview_and_needs_new_dry_run(self) -> None:
+        self._saved_job()
+        attempts = []
+        error = OSError("response lost after remote post update")
+
+        def simulated_async(operation, on_success):
+            try:
+                on_success(operation())
+            except OSError:
+                # Mirrors the worker path: the failure has no success callback.
+                attempts.append("uncertain")
+
+        def remote(_connector, _job, *, dry_run):
+            attempts.append("preview" if dry_run else "write")
+            if not dry_run:
+                raise error
+            return SimpleNamespace(scanned=2, changed=1)
+
+        with patch.object(gui_module, "run_link_job", side_effect=remote), \
+             patch.object(self.app, "run_async", side_effect=simulated_async):
+            self.app.run_job(True)
+            self.assertIsNotNone(self.app.preview_revision)
+            self.app.run_job(False)
+            self.assertIsNone(self.app.preview_revision)
+            self.app.run_job(False)
+        self.assertEqual(attempts, ["preview", "write", "uncertain"])
+        gui_module.messagebox.showwarning.assert_called()
+
+    def test_cancelled_live_confirmation_keeps_preview_without_writing(self) -> None:
+        self._saved_job()
+        with patch.object(gui_module, "run_link_job", return_value=SimpleNamespace(scanned=1, changed=1)), \
+             patch.object(self.app, "run_async", side_effect=self._sync_run):
+            self.app.run_job(True)
+            approved = self.app.preview_revision
+            gui_module.messagebox.askyesno.return_value = False
+            self.app.run_job(False)
+            self.assertEqual(self.app.preview_revision, approved)
+
     def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
         # This checks real geometry computation, not visual legibility, colors,
         # clipping in a physical monitor, or 100-150% Windows display scaling.
