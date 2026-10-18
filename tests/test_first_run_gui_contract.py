@@ -85,7 +85,8 @@ class GuidedGuiContractTests(unittest.TestCase):
         for name in ("ja", "en"):
             with self.subTest(name=name):
                 values = json.loads((TRANSLATIONS / (name + ".json")).read_text(encoding="utf-8"))
-                self.assertFalse(REQUIRED - values, f"Missing keys: {REQUIRED - values}")
+                missing = REQUIRED - set(values)
+                self.assertFalse(missing, f"Missing keys: {missing}")
                 self.assertTrue(all(isinstance(values[k], str) and values[k].strip() for k in REQUIRED))
 
     def test_languages_have_identical_keys(self) -> None:
