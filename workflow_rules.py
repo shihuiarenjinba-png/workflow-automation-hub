@@ -49,13 +49,35 @@ def _evaluate(base: Path, condition: dict[str, Any]) -> bool:
     raise RuleError("Unsupported trigger/condition type")
 
 
+def validate_condition(base: Path, condition: dict[str, Any]) -> None:
+    """Validate every rule, even when an earlier trigger is not met."""
+    if not isinstance(condition, dict):
+        raise RuleError("Trigger/condition must be an object")
+    kind = condition.get("type")
+    if kind == "manual":
+        return
+    if kind not in ("file_exists", "extension_is", "text_contains"):
+        raise RuleError("Unsupported trigger/condition type")
+    _file(base, condition.get("path"))
+    if kind == "extension_is":
+        value = condition.get("extension")
+        if not isinstance(value, str) or not value.startswith(".") or len(value) > 20:
+            raise RuleError("Extension condition requires an explicit suffix")
+    if kind == "text_contains":
+        value = condition.get("text")
+        if not isinstance(value, str) or not value or len(value) > 200:
+            raise RuleError("Text condition must contain 1 to 200 characters")
+
+
 def evaluate_rules(config: dict[str, Any], base_dir: Path) -> tuple[bool, str]:
     trigger = config.get("trigger", {"type": "manual"})
-    if not _evaluate(base_dir, trigger):
-        return False, "trigger_not_met"
     conditions = config.get("conditions", [])
     if not isinstance(conditions, list):
         raise RuleError("conditions must be a list")
+    for rule in [trigger, *conditions]:
+        validate_condition(base_dir, rule)
+    if not _evaluate(base_dir, trigger):
+        return False, "trigger_not_met"
     for index, condition in enumerate(conditions, 1):
         if not _evaluate(base_dir, condition):
             return False, f"condition_{index}_not_met"
