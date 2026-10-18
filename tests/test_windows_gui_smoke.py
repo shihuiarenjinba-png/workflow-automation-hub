@@ -164,6 +164,38 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         self.jobs.upsert(replace(job, link_url="https://example.com/changed"))
         self.assertFalse(self.approvals.approved(self.jobs.get(job.id)))
 
+    def test_failed_google_connection_does_not_show_connected(self) -> None:
+        self.app.google_verified = True
+        self.app._checked_google_result(SimpleNamespace(ok=False, blogs=[], detail="offline"))
+        self.assertFalse(self.app.google_verified)
+        self.assertNotIn(self.app.t("home_state_api_verified"), self.app.home_connection_status.get())
+        gui_module.messagebox.showerror.assert_called_once()
+
+    def test_successful_google_connection_is_displayed_as_verified(self) -> None:
+        self.app._checked_google_result(SimpleNamespace(
+            ok=True, blogs=[{"id": "test-blog", "name": "Demo", "url": "https://example.blogspot.com"}]
+        ))
+        self.assertTrue(self.app.google_verified)
+        self.assertIn(self.app.t("home_state_api_verified"), self.app.home_connection_status.get())
+        self.assertEqual(len(self.app.blog_display_to_id), 1)
+
+    def test_task_delete_failure_keeps_saved_rule_and_reports_error(self) -> None:
+        job = self._saved_job()
+        self.scheduler.unregister.side_effect = OSError("simulated Windows task error")
+        self.app.delete_job()
+        self.assertEqual(self.jobs.get(job.id).id, job.id)
+        self.assertEqual(self.app.selected_job_id, job.id)
+        gui_module.messagebox.showerror.assert_called_once()
+
+    def test_delete_success_removes_rule_and_schedule_approval(self) -> None:
+        job = self._saved_job()
+        self.approvals.authorize(job)
+        self.app.delete_job()
+        self.scheduler.unregister.assert_called_once_with(job.id)
+        self.assertFalse(self.approvals.approved(job))
+        with self.assertRaises(KeyError):
+            self.jobs.get(job.id)
+
     def test_layout_widgets_exist_at_three_scaling_factors(self) -> None:
         # This checks real geometry computation, not visual legibility, colors,
         # clipping in a physical monitor, or 100-150% Windows display scaling.
