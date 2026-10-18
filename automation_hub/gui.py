@@ -247,12 +247,24 @@ class AutomationHubGUI:
                 ttk.Entry(right, textvariable=variable).grid(row=row, column=1, sticky="ew", padx=8)
         right.columnconfigure(1, weight=1)
         ttk.Checkbutton(right, text=self.t("enabled"), variable=self.enabled_var).grid(row=6, column=1, sticky="w", padx=8, pady=5)
-        actions = ttk.Frame(right)
-        actions.grid(row=7, column=0, columnspan=2, sticky="w", pady=18)
-        ttk.Button(actions, text=self.t("save_job"), command=self.save_job).pack(side="left", padx=(0, 8))
-        ttk.Button(actions, text=self.t("run_dry"), command=lambda: self.run_job(True)).pack(side="left", padx=(0, 8))
-        ttk.Button(actions, text=self.t("run_now"), command=lambda: self.run_job(False)).pack(side="left", padx=(0, 8))
-        ttk.Button(actions, text=self.t("delete_job"), command=self.delete_job).pack(side="left")
+        actions = ttk.LabelFrame(right, text=self.t("job_action_title"), padding=8)
+        actions.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(12, 8))
+        # Separate 'save + preview' from the side-effecting live action.
+        # Two rows also prevent long Japanese labels from overflowing at 150%.
+        ttk.Button(actions, text=self.t("save_job"), command=self.save_job).grid(
+            row=0, column=0, sticky="ew", padx=(0, 8), pady=3
+        )
+        ttk.Button(actions, text=self.t("run_dry"), command=lambda: self.run_job(True)).grid(
+            row=0, column=1, sticky="ew", pady=3
+        )
+        ttk.Button(actions, text=self.t("run_now"), command=lambda: self.run_job(False)).grid(
+            row=1, column=1, sticky="ew", pady=3
+        )
+        ttk.Button(actions, text=self.t("delete_job"), command=self.delete_job).grid(
+            row=1, column=0, sticky="ew", padx=(0, 8), pady=3
+        )
+        actions.columnconfigure(0, weight=1)
+        actions.columnconfigure(1, weight=1)
         ttk.Label(right, text=self.t("job_effect_title"), font=("Segoe UI", 10, "bold")).grid(
             row=8, column=0, columnspan=2, sticky="w", pady=(7, 3)
         )
@@ -309,12 +321,20 @@ class AutomationHubGUI:
         ]
         for index, (day, key) in enumerate(names):
             ttk.Checkbutton(weekdays_frame, text=self.t(key), variable=self.weekday_vars[day]).grid(row=0, column=index, padx=(0, 6))
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=4, column=0, columnspan=2, sticky="w", pady=20)
-        ttk.Button(buttons, text=self.t("save"), command=self.save_schedule_to_job).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("register_schedule"), command=self.register_schedule).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("remove_schedule"), command=self.remove_schedule).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text=self.t("test_scheduler"), command=self.test_scheduler).pack(side="left")
+        buttons = ttk.LabelFrame(frame, text=self.t("schedule_action_title"), padding=8)
+        buttons.grid(row=4, column=0, columnspan=2, sticky="w", pady=(12, 8))
+        ttk.Button(buttons, text=self.t("save"), command=self.save_schedule_to_job).grid(
+            row=0, column=0, sticky="ew", padx=(0, 8), pady=3
+        )
+        ttk.Button(buttons, text=self.t("test_scheduler"), command=self.test_scheduler).grid(
+            row=0, column=1, sticky="ew", pady=3
+        )
+        ttk.Button(buttons, text=self.t("register_schedule"), command=self.register_schedule).grid(
+            row=1, column=0, sticky="ew", padx=(0, 8), pady=3
+        )
+        ttk.Button(buttons, text=self.t("remove_schedule"), command=self.remove_schedule).grid(
+            row=1, column=1, sticky="ew", pady=3
+        )
         self.scheduler_status_var = StringVar(value="")
         ttk.Label(frame, textvariable=self.scheduler_status_var, wraplength=800).grid(row=5, column=0, columnspan=2, sticky="w")
         ttk.Label(
@@ -443,7 +463,19 @@ class AutomationHubGUI:
     def test_google(self) -> None:
         self.google_verified = False
         self._refresh_home_status()
-        self.run_async(self.google.check_connection, lambda result: self._after_google_test(result.blogs))
+        self.run_async(self.google.check_connection, self._checked_google_result)
+
+    def _checked_google_result(self, result: Any) -> None:
+        if not result.ok:
+            self.google_verified = False
+            self.google_status_var.set(self._google_status_text())
+            self._refresh_home_status()
+            messagebox.showerror(
+                self.t("error_title"), self.t("google_connection_failed"),
+                parent=self.root,
+            )
+            return
+        self._after_google_test(result.blogs)
 
     def _after_google_test(self, blogs: list[dict[str, str]]) -> None:
         self.google_verified = True
@@ -655,12 +687,11 @@ class AutomationHubGUI:
             return
         job_id = self.selected_job_id
         try:
-            try:
-                self.scheduler.unregister(job_id)
-            except Exception:
-                pass
-            self.job_store.delete(job_id)
+            # If the Windows task cannot be removed, retain the rule to avoid
+            # a phantom recurring task that the UI claims was deleted.
+            self.scheduler.unregister(job_id)
             self.schedule_approvals.revoke(job_id)
+            self.job_store.delete(job_id)
             self.preview_revision = None
             self.selected_job_id = None
             self.new_job(force=True)

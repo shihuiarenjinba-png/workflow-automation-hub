@@ -318,6 +318,6 @@ class GoogleBloggerConnector:
         try:
             return self._service().posts().patch(
                 blogId=blog_id, postId=post_id, body={"content": content}, fetchBody=False
-            ).execute(num_retries=2)
+            ).execute(num_retries=0)  # No automatic replay of a mutating request.
         except HttpError as exc:
             raise GoogleBloggerError(f"Could not update Blogger post / Blogger記事を更新できません: {exc}") from exc
