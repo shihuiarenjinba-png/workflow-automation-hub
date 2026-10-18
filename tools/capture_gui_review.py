@@ -121,6 +121,7 @@ def main() -> int:
                 ("ja-jobs", 2, "ja", 1.0),
                 ("ja-schedule", 3, "ja", 1.0),
                 ("ja-jobs-150", 2, "ja", 1.5),
+                ("ja-jobs-150-bottom", 2, "ja", 1.5),
                 ("en-home", 0, "en", 1.0),
             ]
             baseline_scaling = float(root.tk.call("tk", "scaling"))
@@ -146,12 +147,25 @@ def main() -> int:
                     root.update()
                     frame = [app.home_tab, app.google_tab, app.jobs_tab,
                              app.schedule_tab, app.compliance_tab][tab]
+                    if tab == 2:
+                        # Check the actual inner editor width, not just the
+                        # new scrollable Canvas wrapper width.
+                        frame = app.job_inner
+                        visible_width = app.job_canvas.winfo_width()
+                        if name.endswith("-bottom"):
+                            app.job_canvas.yview_moveto(1.0)
+                        else:
+                            app.job_canvas.yview_moveto(0.0)
+                        root.update_idletasks()
+                        root.update()
+                    else:
+                        visible_width = frame.winfo_width()
                     data = capture(root, output / f"{name}.png")
                     data.update({"tab": tab, "locale": lang, "relative_scaling": scaling,
                                  "tk_scaling": actual_scaling,
                                  "requested_width": frame.winfo_reqwidth(),
-                                 "visible_width": frame.winfo_width(),
-                                 "clipped_horizontally": frame.winfo_reqwidth() > frame.winfo_width() + 8})
+                                 "visible_width": visible_width,
+                                 "clipped_horizontally": frame.winfo_reqwidth() > visible_width + 8})
                     report["cases"].append(data)
                 except Exception as exc:
                     report["failures"].append({"case": name, "error": type(exc).__name__,
@@ -165,7 +179,7 @@ def main() -> int:
                       "failures": report["failures"],
                       "possibly_clipped": [x["file"] for x in report["cases"] if x["clipped_horizontally"]]},
                      ensure_ascii=False))
-    return 0 if len(report["cases"]) == 6 and not report["failures"] else 1
+    return 0 if len(report["cases"]) == 7 and not report["failures"] else 1
 
 
 if __name__ == "__main__":
