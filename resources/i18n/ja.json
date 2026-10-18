@@ -84,7 +84,7 @@
   "friday": "金",
   "saturday": "土",
   "sunday": "日",
-  "desktop_note": "EXEはデスクトップに配置可能。OAuth設定・トークン・設定・監査ログはLocalAppDataへ分離保存します。",
+  "desktop_note": "Bloggerの記事へリンクを追加。変更前に試運転で確認できます。",
   "select_credentials": "Google OAuth Desktop appのJSONファイルを選択",
   "tab_home": "はじめに",
   "home_title": "ブログ記事のリンク追加を、3ステップで",
