@@ -12,9 +12,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from file_ops_safe import FileOperationError, copy_or_move, write_text_safely
+
 
 class WorkflowError(RuntimeError):
     pass
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        return None
 
 
 def utc_now() -> str:
@@ -115,8 +122,7 @@ class Runner:
         if not src.is_file():
             raise WorkflowError(f"Source file does not exist: {src}")
         self._check_destination(dst, overwrite)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
+        copy_or_move(src, dst, move=False, overwrite=overwrite)
 
     def _move_file(self, step: dict[str, Any]) -> None:
         src = self._path(str(step["src"]))
@@ -127,10 +133,7 @@ class Runner:
         if not src.is_file():
             raise WorkflowError(f"Source file does not exist: {src}")
         self._check_destination(dst, overwrite)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if dst.exists() and overwrite:
-            dst.unlink()
-        shutil.move(str(src), str(dst))
+        copy_or_move(src, dst, move=True, overwrite=overwrite)
 
     def _write_text(self, step: dict[str, Any]) -> None:
         dst = self._path(str(step["path"]))
@@ -139,8 +142,7 @@ class Runner:
         if self.dry_run:
             return
         self._check_destination(dst, overwrite)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_text(text, encoding="utf-8")
+        write_text_safely(dst, text, overwrite=overwrite)
 
     def _http_request(self, step: dict[str, Any]) -> None:
         url = str(step["url"])
@@ -150,6 +152,8 @@ class Runner:
             raise WorkflowError("Only HTTPS API calls are allowed")
         if not host or host not in self.allowed_hosts:
             raise WorkflowError(f"Host is not in allow_hosts: {host}")
+        if parsed.username or parsed.password or parsed.fragment:
+            raise WorkflowError("URL credentials and fragments are not permitted")
 
         method = str(step.get("method", "GET")).upper()
         if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
@@ -165,8 +169,10 @@ class Runner:
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         timeout = float(step.get("timeout_seconds", 30))
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                body = response.read(1_000_000)
+            with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
+                body = response.read(1_000_001)
+                if len(body) > 1_000_000:
+                    raise WorkflowError("HTTP response exceeds verified 1 MiB limit")
                 self.log({
                     "event": "http_response",
                     "status": response.status,
@@ -189,7 +195,7 @@ def main() -> int:
         config = json.loads(args.config.read_text(encoding="utf-8"))
         Runner(config, dry_run=args.dry_run).run()
         return 0
-    except (OSError, json.JSONDecodeError, KeyError, WorkflowError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, WorkflowError, FileOperationError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
