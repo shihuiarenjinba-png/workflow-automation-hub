@@ -14,6 +14,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertIn('/RL', args)
         self.assertIn('LIMITED', args)
         self.assertIn('/IT', args)
+        self.assertNotIn('/F', args, 'Task registration must not overwrite existing tasks')
         command = args[args.index('/TR') + 1]
         self.assertIn('--run-job', command)
         self.assertIn('job-1', command)
