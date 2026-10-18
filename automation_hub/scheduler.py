@@ -42,7 +42,8 @@ def build_create_args(job: BloggerLinkJob) -> list[str]:
         "schtasks", "/Create",
         "/TN", task_name(job.id),
         "/TR", runner_command(job.id),
-        "/F",
+        # Deliberately refuse to overwrite an existing task, even with a matching name.
+        # A reschedule requires an explicit remove/re-register workflow.
         "/RL", "LIMITED",
         "/IT",
     ]
