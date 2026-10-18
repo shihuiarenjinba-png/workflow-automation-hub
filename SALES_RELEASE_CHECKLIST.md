@@ -75,7 +75,7 @@ passed Windows release. Existing checked items above describe the older
 base branch; they must be revalidated for this branch at its exact SHA.
 
 - [x] Offline pure-logic tests: 22 PASS locally against SHA-verified copies of models.py, ui_flow.py, schedule_approval.py and their two test files (Python 3.13).
-- [x] Both translation dictionaries contain the same 124 keys; all explicitly referenced literal GUI keys are present (dynamic home_state_ prefix resolved by defined variants).
+- [x] Both translation dictionaries contain the the same set of keys; all explicitly referenced literal GUI keys are present (dynamic home_state_ prefix resolved by defined variants).
 - [ ] Run `python -m unittest discover -s tests -v` on the exact committed checkout on Windows 11 and verify no regressions from preexisting tests.
 - [ ] Run `python -m unittest discover -s tests -p test_first_run_gui_contract.py -v` on the exact branch; AST/headless checks are committed but not locally executed.
 - [ ] Verify the Start Here screen clearly describes Blogger link insertion, not a general-purpose workflow.
