@@ -467,6 +467,14 @@ class AutomationHubGUI:
             self.blog_display_to_id[display] = blog.get("id", "")
         if hasattr(self, "blog_combo"):
             self.blog_combo["values"] = displays
+            current = self.blog_var.get().strip()
+            if current and current not in self.blog_display_to_id:
+                mapped = next(
+                    (label for label, ident in self.blog_display_to_id.items() if ident == current),
+                    None,
+                )
+                if mapped:
+                    self.blog_var.set(mapped)
 
     def disconnect_google(self) -> None:
         if not messagebox.askyesno(self.t("warning_title"), self.t("confirm_disconnect")):
@@ -518,6 +526,7 @@ class AutomationHubGUI:
             self.jobs_list.delete(0, "end")
             for job in jobs:
                 self.jobs_list.insert("end", f"{job.name} [{job.id}]")
+            self._restore_list_selection()
         if hasattr(self, "schedule_job_combo"):
             self.schedule_job_combo["values"] = [f"{job.name} [{job.id}]" for job in jobs]
         self._refresh_home_status()
@@ -553,8 +562,8 @@ class AutomationHubGUI:
                 self.jobs_list.selection_set(index)
                 break
 
-    def new_job(self) -> None:
-        if not self._confirm_discard_input():
+    def new_job(self, *, force: bool = False) -> None:
+        if not force and not self._confirm_discard_input():
             return
         self.selected_job_id = None
         self.job_name_var.set("")
@@ -648,7 +657,7 @@ class AutomationHubGUI:
             self.job_store.delete(job_id)
             self.preview_revision = None
             self.selected_job_id = None
-            self.new_job()
+            self.new_job(force=True)
             self.refresh_jobs(show_error=False)
             messagebox.showinfo(self.t("info_title"), self.t("deleted"))
         except Exception as exc:
