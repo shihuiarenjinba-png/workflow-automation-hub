@@ -772,6 +772,11 @@ class AutomationHubGUI:
         if not job_id:
             messagebox.showinfo(self.t("info_title"), self.t("select_job_first"), parent=self.root)
             return
+        if self.selected_job_id == job_id and self._visible_job_dirty():
+            messagebox.showwarning(
+                self.t("warning_title"), self.t("save_changes_first"), parent=self.root
+            )
+            return
         try:
             saved = self.job_store.get(job_id)
             if self.preview_revision != job_revision(saved):
