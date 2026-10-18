@@ -728,6 +728,11 @@ class AutomationHubGUI:
                 self.t("warning_title"), self.t("confirm_run"), parent=self.root
             ):
                 return
+            # A write may partly succeed remotely and then lose its response.
+            # Consume this preview BEFORE attempting a mutating request,
+            # not after a success callback that might never arrive.
+            self.preview_revision = None
+            self._refresh_home_status()
         self.run_async(
             lambda: run_link_job(self.google, job, dry_run=dry_run),
             lambda result: self._after_job_run(job, result, dry_run),
