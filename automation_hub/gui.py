@@ -35,6 +35,9 @@ class AutomationHubGUI:
             self.locale = "ja"
         self.blogs: list[dict[str, str]] = []
         self.blog_display_to_id: dict[str, str] = {}
+        # UI shows readable names; IDs stay in a separate index to avoid
+        # cryptic, clipped suffixes and safely handle identical job names.
+        self.job_row_ids: list[str] = []
         self.selected_job_id: str | None = None
         self.selected_schedule_job_id: str | None = None
         self.busy = False
@@ -385,10 +388,7 @@ class AutomationHubGUI:
         self.schedule_job_var.set(schedule_choice)
         self.notebook.select(tab_index)
         if self.selected_job_id:
-            for index in range(self.jobs_list.size()):
-                if self._id_from_display(self.jobs_list.get(index)) == self.selected_job_id:
-                    self.jobs_list.selection_set(index)
-                    break
+            self._restore_list_selection()
         self._refresh_home_status()
 
     def choose_credentials(self) -> None:
@@ -553,6 +553,7 @@ class AutomationHubGUI:
         except JobStoreError as exc:
             if hasattr(self, "jobs_list"):
                 self.jobs_list.delete(0, "end")
+                self.job_row_ids = []
             if hasattr(self, "schedule_job_combo"):
                 self.schedule_job_combo["values"] = []
             self._refresh_home_status()
@@ -561,8 +562,10 @@ class AutomationHubGUI:
             return
         if hasattr(self, "jobs_list"):
             self.jobs_list.delete(0, "end")
+            self.job_row_ids = []
             for job in jobs:
-                self.jobs_list.insert("end", f"{job.name} [{job.id}]")
+                self.jobs_list.insert("end", job.name)
+                self.job_row_ids.append(job.id)
             self._restore_list_selection()
         if hasattr(self, "schedule_job_combo"):
             self.schedule_job_combo["values"] = [f"{job.name} [{job.id}]" for job in jobs]
@@ -594,8 +597,8 @@ class AutomationHubGUI:
         self.jobs_list.selection_clear(0, "end")
         if self.selected_job_id is None:
             return
-        for index in range(self.jobs_list.size()):
-            if self._id_from_display(self.jobs_list.get(index)) == self.selected_job_id:
+        for index, job_id in enumerate(self.job_row_ids):
+            if job_id == self.selected_job_id:
                 self.jobs_list.selection_set(index)
                 break
 
@@ -623,7 +626,10 @@ class AutomationHubGUI:
         selection = self.jobs_list.curselection()
         if not selection:
             return
-        next_id = self._id_from_display(self.jobs_list.get(selection[0]))
+        if selection[0] >= len(self.job_row_ids):
+            self._restore_list_selection()
+            return
+        next_id = self.job_row_ids[selection[0]]
         if next_id == self.selected_job_id:
             return
         if not self._confirm_discard_input():
