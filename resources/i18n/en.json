@@ -84,7 +84,7 @@
   "friday": "Fri",
   "saturday": "Sat",
   "sunday": "Sun",
-  "desktop_note": "The EXE may be kept on Desktop. OAuth config, tokens, settings, and audit logs are stored separately under LocalAppData.",
+  "desktop_note": "Add links to Blogger posts. Preview before making changes.",
   "select_credentials": "Select Google OAuth Desktop app JSON",
   "tab_home": "Start Here",
   "home_title": "Add links to your Blogger posts in 3 steps",
