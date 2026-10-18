@@ -443,7 +443,19 @@ class AutomationHubGUI:
     def test_google(self) -> None:
         self.google_verified = False
         self._refresh_home_status()
-        self.run_async(self.google.check_connection, lambda result: self._after_google_test(result.blogs))
+        self.run_async(self.google.check_connection, self._checked_google_result)
+
+    def _checked_google_result(self, result: Any) -> None:
+        if not result.ok:
+            self.google_verified = False
+            self.google_status_var.set(self._google_status_text())
+            self._refresh_home_status()
+            messagebox.showerror(
+                self.t("error_title"), self.t("google_connection_failed"),
+                parent=self.root,
+            )
+            return
+        self._after_google_test(result.blogs)
 
     def _after_google_test(self, blogs: list[dict[str, str]]) -> None:
         self.google_verified = True
@@ -655,10 +667,9 @@ class AutomationHubGUI:
             return
         job_id = self.selected_job_id
         try:
-            try:
-                self.scheduler.unregister(job_id)
-            except Exception:
-                pass
+            # If the Windows task cannot be removed, retain the rule to avoid
+            # a phantom recurring task that the UI claims was deleted.
+            self.scheduler.unregister(job_id)
             self.job_store.delete(job_id)
             self.schedule_approvals.revoke(job_id)
             self.preview_revision = None
