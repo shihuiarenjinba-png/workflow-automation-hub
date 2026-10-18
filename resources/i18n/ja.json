@@ -113,5 +113,11 @@
   "preview_required_before_live": "最初に「試運転（記事は変更しない）」を実行してください。入力・保存を変えた場合も再試運転が必要です。",
   "busy_processing": "現在の操作が完了してから実行してください。",
   "home_state_api_verified": "状況：Blogger APIの接続確認に成功しました（この起動中）",
-  "oauth_saved_unverified": "認証情報あり・API接続未確認"
+  "oauth_saved_unverified": "認証情報あり・API接続未確認",
+  "google_first_setup": "初回設定：左から順に進めてください",
+  "google_first_setup_tip": "① JSONを取り込む → ② Googleに接続 → ③ 接続確認。③が成功したら、はじめに画面へ戻ってルールを作れます。",
+  "google_management": "その他の操作（接続管理）",
+  "job_effect_title": "このルールを実行すると",
+  "job_effect_missing": "検索する文字とリンク先URLを入力すると、変更内容の説明が表示されます。保存後は試運転で実際の記事を確認してください。",
+  "job_effect_template": "最大 {count} 件の記事から「{target}」を探し、見つかった文字を「{anchor}」というリンクにします。リンク先：{url}。同じリンクがある記事などは変更しません。"
 }
