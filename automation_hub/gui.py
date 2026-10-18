@@ -315,6 +315,9 @@ class AutomationHubGUI:
         ttk.Button(buttons, text=self.t("test_scheduler"), command=self.test_scheduler).pack(side="left")
         self.scheduler_status_var = StringVar(value="")
         ttk.Label(frame, textvariable=self.scheduler_status_var, wraplength=800).grid(row=5, column=0, columnspan=2, sticky="w")
+        ttk.Label(
+            frame, text=self.t("schedule_advanced_notice"), wraplength=780, justify="left"
+        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(14, 0))
 
     def _build_compliance_tab(self) -> None:
         text = "\n\n".join([
@@ -739,7 +742,7 @@ class AutomationHubGUI:
             weekdays=[day for day, var in self.weekday_vars.items() if var.get()],
         )
 
-    def save_schedule_to_job(self) -> BloggerLinkJob | None:
+    def save_schedule_to_job(self, *, show_feedback: bool = True) -> BloggerLinkJob | None:
         display = self.schedule_job_var.get()
         schedule_id = self._id_from_display(display) if display else self.selected_schedule_job_id
         if not schedule_id:
@@ -750,13 +753,17 @@ class AutomationHubGUI:
             job.schedule = self._schedule_from_fields()
             self.job_store.upsert(job)
             self.refresh_jobs(show_error=False)
-            messagebox.showinfo(self.t("info_title"), self.t("saved"))
+            if show_feedback:
+                messagebox.showinfo(self.t("info_title"), self.t("saved"), parent=self.root)
             return job
         except Exception as exc:
             messagebox.showerror(self.t("error_title"), str(exc))
             return None
 
     def register_schedule(self) -> None:
+        if self.busy:
+            messagebox.showinfo(self.t("info_title"), self.t("busy_processing"), parent=self.root)
+            return
         display = self.schedule_job_var.get()
         job_id = self._id_from_display(display) if display else self.selected_schedule_job_id
         if not job_id:
@@ -776,7 +783,7 @@ class AutomationHubGUI:
             self.t("warning_title"), self.t("confirm_schedule_changes"), parent=self.root
         ):
             return
-        job = self.save_schedule_to_job()
+        job = self.save_schedule_to_job(show_feedback=False)
         if job is None:
             return
         try:
@@ -786,6 +793,9 @@ class AutomationHubGUI:
             messagebox.showerror(self.t("error_title"), str(exc), parent=self.root)
 
     def remove_schedule(self) -> None:
+        if self.busy:
+            messagebox.showinfo(self.t("info_title"), self.t("busy_processing"), parent=self.root)
+            return
         display = self.schedule_job_var.get()
         job_id = self._id_from_display(display) if display else self.selected_schedule_job_id
         if not job_id:
