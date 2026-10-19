@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "store" / "product_identity.json"
 MANIFEST = ROOT / "store" / "AppxManifest.template.xml"
 BUILDER = ROOT / "store" / "build_msix_draft.ps1"
+WINDOWS_BUILDER = ROOT / "build_windows.ps1"
 WORKFLOW = ROOT / ".github" / "workflows" / "windows-build.yml"
 
 NAMESPACE = "http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -84,6 +85,14 @@ class StoreIdentityDraftTests(unittest.TestCase):
         self.assertIn("submission_allowed", builder)
         self.assertNotIn("SALES_RELEASE_APPROVED.txt", builder)
 
+    def test_windows_builder_can_pin_the_base_python(self):
+        builder = WINDOWS_BUILDER.read_text(encoding="utf-8")
+        self.assertIn('param([string]$BasePythonPath = "")', builder)
+        self.assertIn('& $BasePythonPath -m venv .venv', builder)
+        self.assertIn('python -m venv .venv', builder)
+        self.assertNotIn('py -3 -m venv .venv', builder)
+
 
 if __name__ == "__main__":
     unittest.main()
+
