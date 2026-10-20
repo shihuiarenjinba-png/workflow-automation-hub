@@ -2,27 +2,27 @@
 
 **DRAFT / NOT READY FOR SUBMISSION**
 
-Source head reviewed before this documentation commit: `4bfaccaf2f3e41c8932bc6abfdfbe750b7a69d8a`.
+Validated source head: `4bfaccaf2f3e41c8932bc6abfdfbe750b7a69d8a`.
 
 ## Verified
 
-- Code tests: 99 passed; 10 subtests passed locally; current-head Windows CI completed all relevant steps successfully.
-- Fresh MSIX build/round-trip validation: PASS.
-- Package hashes: unsigned f13d6cc86f3dd8f08f62195fe4a1a883c8532b3f3896839f2af5818d76135ebc; local-validation signed 6b4b02848d181b30685466e792df1799dc4b6d80f2ad535ca89dbc24aab3fc49.
-- The local-validation signer matched the intended code-signing certificate thumbprint `60BB363D9BE876439137DFB31247952463106BDD`.
+- Local code tests: 99 passed; 10 subtests passed.
+- Current-head Windows CI run `39400020791`: PASS, including checkout, dependency checks, unit tests, GUI evidence, EXE build, unsigned MSIX draft, and artifact uploads.
+- Fresh unsigned MSIX build/round-trip: PASS; SHA256 `f13d6cc86f3dd8f08f62195fe4a1a883c8532b3f3896839f2af5818d76135ebc`.
+- Local-validation signed copy SHA256 `6b4b02848d181b30685466e792df1799dc4b6d80f2ad535ca89dbc24aab3fc49`; signer matched thumbprint `60BB363D9BE876439137DFB31247952463106BDD`.
+
+## PFN discrepancy — submission blocker
+
+Captured `store/product_identity.json` contains `OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgh58`, whose PublisherId suffix is 12 characters. Microsoft fixes PublisherId at 13 characters. Windows `PackageFamilyNameFromId`, using the package's Identity Name and Publisher, returned `OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgfh58`. The captured file is intentionally unchanged; live Partner Center product `9P6SXJNNB5KK` must be recopied after owner sign-in before any package upload. Do not guess-correct the formal value.
 
 ## Not yet verified
 
-- Local signed MSIX installation.
-- Launch from the Windows Start menu.
-- Installed-package Japanese/English UI, setting persistence, close/restart, and real safe input/output.
-- Installed-package Store screenshots.
-- Windows App Certification Kit report.
-- Live Partner Center identity re-copy and final listing review.
-- Owner-approved logo, price, markets, IARC answers, privacy/support identity, EULA, and final third-party notices.
+MSIX installation, Start-menu launch, installed JP/EN UI, persistence/restart, safe local I/O, Store screenshots, WACK, and live Partner Center identity are NOT TESTED. Google OAuth/Blogger live use remains prohibited without an owner-authorized non-production account. External production OAuth also needs a public privacy-policy URL on an owner-verified domain. No certificate-store change is authorized.
 
-The first Scheduled API Runner install attempt failed with `0x800B0109` because the test certificate is not in `LocalMachine\\TrustedPeople`. No certificate-store change is authorized by this document. Never use `CurrentUser\\Root` or `LocalMachine\\Root`, and never weaken Windows security controls.
+## Submission safeguards
 
-Local preview/config/audit behavior may be tested after installation. Google OAuth and Blogger live updates remain prohibited until an owner-authorized non-production account/environment is supplied.
-
-Store submission, publication, main/release merge, external account access, and destructive customer-data operations are not authorized by this status note.
+- Microsoft Standard Application License Terms (SALT) are the default when **Additional license terms** is left blank. A custom EULA is not an engineering prerequisite unless the owner chooses different terms.
+- Prices and Japan/United States markets remain proposals only. Disable future-market automatic expansion.
+- Immediately before certification submission, select **Don't publish this submission until I select Publish now**. The default can publish automatically after certification.
+- AI-generated icons remain unapproved concepts and are not package or Store assets.
+- Certificate-store changes, Store upload/submission/publication, and main/release merges remain unauthorized.
