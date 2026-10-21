@@ -6,9 +6,10 @@
   "package_identity_name": "OkinawaDesktopTools.WorkflowAutomationHub",
   "publisher": "CN=46263F21-A700-41DB-8C9B-114C22FB82FC",
   "publisher_display_name": "Okinawa Desktop Tools",
-  "package_family_name": "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgh58",
+  "package_family_name": "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgfh58",
   "initial_msix_version": "0.1.0.0",
-  "evidence": "Owner-provided Microsoft Partner Center View product identity screenshot, 2026-10-18",
+  "evidence": "Owner-confirmed values copied from Microsoft Partner Center product identity on 2026-10-21; PFN independently matched Windows PackageFamilyNameFromId.",
+  "previous_identity_record": "store/archive/product_identity_20261018_pfn_typo.json",
   "submission_allowed": false,
-  "notes": "Partner Center product draft exists; no actual MSIX package or successful certification was shown. Never merge, submit, or publish without explicit owner acceptance."
+  "notes": "Identity data is corrected, but installation, Store assets, legal decisions, upload, certification, and publication remain separate approval gates."
 }

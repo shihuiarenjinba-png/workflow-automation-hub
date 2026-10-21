@@ -14,6 +14,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "windows-build.yml"
 
 NAMESPACE = "http://schemas.microsoft.com/appx/manifest/foundation/windows10"
 UAP10 = "http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+EXPECTED_NAME = "OkinawaDesktopTools.WorkflowAutomationHub"
+EXPECTED_PUBLISHER = "CN=46263F21-A700-41DB-8C9B-114C22FB82FC"
+EXPECTED_PFN = "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgfh58"
 
 
 class StoreIdentityDraftTests(unittest.TestCase):
@@ -24,19 +27,18 @@ class StoreIdentityDraftTests(unittest.TestCase):
 
     def test_store_id_matches_owner_provided_partner_center(self):
         self.assertEqual(self.identity["store_id"], "9P6SXJNNB5KK")
-        self.assertEqual(
-            self.identity["package_identity_name"],
-            "OkinawaDesktopTools.WorkflowAutomationHub",
-        )
-        self.assertEqual(
-            self.identity["publisher"],
-            "CN=46263F21-A700-41DB-8C9B-114C22FB82FC",
-        )
+        self.assertEqual(self.identity["package_identity_name"], EXPECTED_NAME)
+        self.assertEqual(self.identity["publisher"], EXPECTED_PUBLISHER)
         self.assertEqual(self.identity["publisher_display_name"], "Okinawa Desktop Tools")
-        self.assertEqual(
-            self.identity["package_family_name"],
-            "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgh58",
-        )
+        self.assertEqual(self.identity["package_family_name"], EXPECTED_PFN)
+
+    def test_pfn_is_exact_name_plus_13_character_windows_publisher_id(self):
+        pfn_name, separator, publisher_id = self.identity["package_family_name"].rpartition("_")
+        self.assertEqual(separator, "_")
+        self.assertEqual(pfn_name, self.identity["package_identity_name"])
+        self.assertEqual(len(publisher_id), 13)
+        self.assertRegex(publisher_id, r"^[0-9a-hjkmnp-tv-z]{13}$")
+        self.assertEqual(EXPECTED_PFN, f"{EXPECTED_NAME}_{publisher_id}")
 
     def test_never_confuse_product_draft_with_certified_package(self):
         self.assertEqual(self.identity["store_status_at_capture"], "In draft")
@@ -95,4 +97,3 @@ class StoreIdentityDraftTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
