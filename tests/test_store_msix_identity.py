@@ -92,6 +92,9 @@ class StoreIdentityDraftTests(unittest.TestCase):
         self.assertIn("submission_allowed", builder)
         self.assertIn("Store MSIX version major component must be >= 1", builder)
         self.assertIn("store_version_history_verified", builder)
+        self.assertIn("source_commit = $sourceCommit", builder)
+        self.assertIn("git -C $repoRoot rev-parse HEAD", builder)
+        self.assertIn("MSIX source commit mismatch", workflow)
         self.assertNotIn("SALES_RELEASE_APPROVED.txt", builder)
 
     def test_windows_builder_can_pin_the_base_python(self):

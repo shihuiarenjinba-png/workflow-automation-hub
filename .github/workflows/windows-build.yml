@@ -77,6 +77,8 @@ jobs:
           if (-not $report.manifest_identity_verified -or $report.makeappx_pack_unpack -ne 'PASS') { throw 'MSIX roundtrip verification failed' }
           if ($report.signed -or $report.store_submission_approved -or $report.sale_approved) { throw 'Unexpected sales approval on draft package' }
           if ($report.store_id -cne "9P6SXJNNB5KK") { throw "Wrong Store ID" }
+          $actualCommit = (git rev-parse HEAD).Trim()
+          if ($report.source_commit -cne $actualCommit) { throw "MSIX source commit mismatch" }
       - name: Upload UNSIGNED non-release Store MSIX / 未署名検証MSIXを保存
         uses: actions/upload-artifact@v4
         with:
