@@ -43,11 +43,16 @@ class StoreIdentityDraftTests(unittest.TestCase):
     def test_never_confuse_product_draft_with_certified_package(self):
         self.assertEqual(self.identity["store_status_at_capture"], "In draft")
         self.assertIs(self.identity["submission_allowed"], False)
+        self.assertEqual(self.identity["initial_msix_version"], "1.0.0.0")
+        self.assertEqual(self.identity["legacy_initial_msix_version"], "0.1.0.0")
+        self.assertEqual(self.identity["msix_package_version_status"], "TECHNICAL_DRAFT_ONLY_PUBLIC_RELEASE_HOLD")
+        self.assertIs(self.identity["store_version_history_verified"], False)
 
     def test_valid_four_component_msix_version(self):
         version = self.identity["initial_msix_version"]
         self.assertRegex(version, r"^\d+\.\d+\.\d+\.0$")
         self.assertTrue(all(int(x) <= 65535 for x in version.split(".")))
+        self.assertGreaterEqual(int(version.split(".")[0]), 1)
 
     def test_generated_manifest_identity_and_runtime_contract(self):
         replacements = {
@@ -85,6 +90,8 @@ class StoreIdentityDraftTests(unittest.TestCase):
         self.assertIn("unpack /p", builder)
         self.assertIn("manifest_identity_verified", builder)
         self.assertIn("submission_allowed", builder)
+        self.assertIn("Store MSIX version major component must be >= 1", builder)
+        self.assertIn("store_version_history_verified", builder)
         self.assertNotIn("SALES_RELEASE_APPROVED.txt", builder)
 
     def test_windows_builder_can_pin_the_base_python(self):
