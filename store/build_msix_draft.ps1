@@ -18,6 +18,7 @@ if ($identity.store_id -cne "9P6SXJNNB5KK" -or
 }
 if (-not $Version) { $Version = [string]$identity.initial_msix_version }
 if ($Version -notmatch '^\d+\.\d+\.\d+\.0$') { throw "Expected a four-part MSIX version ending in .0" }
+if ([int]($Version.Split('.')[0]) -lt 1) { throw "Store MSIX version major component must be >= 1; no version guessing is permitted." }
 foreach ($v in $Version.Split('.')) {
     [int]$number = 0
     if (-not [int]::TryParse($v,[ref]$number) -or $number -gt 65535) { throw "Version component out of range" }
@@ -112,6 +113,10 @@ $unpackedSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $unpack "
 if ($sourceSha -cne $unpackedSha) { throw "MSIX EXE hash changed after pack/unpack" }
 $packageSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $msix).Hash.ToLowerInvariant()
 $report = [ordered]@{
+    msix_package_version_status = [string]$identity.msix_package_version_status
+    previous_store_accepted_version = $identity.previous_store_accepted_version
+    store_version_history_verified = [bool]$identity.store_version_history_verified
+    store_submission_allowed = [bool]$identity.submission_allowed
     source = "GitHub Windows CI"
     store_id = [string]$identity.store_id
     identity_name = [string]$identity.package_identity_name
