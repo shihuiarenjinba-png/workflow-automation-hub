@@ -107,7 +107,21 @@ class AutomationHubGUI:
 
     def _build_home_tab(self) -> None:
         """Explain what the product actually does before exposing advanced settings."""
-        frame = self.home_tab
+        # A vertical viewport keeps real jobs and the 3 setup steps reachable
+        # on a smaller Windows display or at increased text scaling.
+        viewport = self.home_tab
+        self.home_canvas = Canvas(viewport, highlightthickness=0, borderwidth=0)
+        self.home_scrollbar = ttk.Scrollbar(
+            viewport, orient="vertical", command=self.home_canvas.yview)
+        self.home_canvas.configure(yscrollcommand=self.home_scrollbar.set)
+        self.home_scrollbar.pack(side="right", fill="y")
+        self.home_canvas.pack(side="left", fill="both", expand=True)
+        frame = ttk.Frame(self.home_canvas)
+        window = self.home_canvas.create_window((0, 0), window=frame, anchor="nw")
+        frame.bind("<Configure>", lambda _event: self.home_canvas.configure(
+            scrollregion=self.home_canvas.bbox("all")))
+        self.home_canvas.bind("<Configure>", lambda event: self.home_canvas.itemconfigure(
+            window, width=event.width))
         ttk.Label(
             frame, text=self.t("home_title"), font=("Segoe UI", 19, "bold")
         ).pack(anchor="w", pady=(0, 8))
@@ -140,6 +154,17 @@ class AutomationHubGUI:
             "home_preview_title", "home_preview_help",
             "home_preview_action", self.jobs_tab
         )
+        jobs_area = ttk.LabelFrame(
+            frame,
+            text="保存済みのBlogger作業" if self.locale == "ja" else "Saved Blogger jobs",
+            padding=9)
+        jobs_area.pack(fill="x", pady=(4, 10))
+        self.home_saved_jobs = Listbox(jobs_area, height=4, exportselection=False)
+        self.home_saved_jobs.pack(side="left", fill="x", expand=True)
+        ttk.Button(jobs_area,
+                   text="作業を開く" if self.locale == "ja" else "Open jobs",
+                   command=lambda: self.notebook.select(self.jobs_tab)).pack(
+                       side="right", padx=(10, 0))
         footer = ttk.Frame(frame)
         footer.pack(fill="x", pady=(2, 0))
         ttk.Label(footer, text=self.t("home_schedule_help"), wraplength=620).pack(side="left")
@@ -153,9 +178,24 @@ class AutomationHubGUI:
         if not hasattr(self, "home_connection_status"):
             return
         try:
-            count = len(self.job_store.load_all())
+            saved_jobs = self.job_store.load_all()
+            count = len(saved_jobs)
         except JobStoreError:
+            saved_jobs = None
             count = None
+        if hasattr(self, "home_saved_jobs"):
+            self.home_saved_jobs.delete(0, "end")
+            if saved_jobs is None:
+                self.home_saved_jobs.insert(
+                    "end", "読み込み失敗" if self.locale == "ja" else "Could not load jobs")
+            elif not saved_jobs:
+                self.home_saved_jobs.insert(
+                    "end", "まだ登録がありません" if self.locale == "ja" else "No saved jobs yet")
+            else:
+                for job in saved_jobs:
+                    state = ("有効" if job.enabled else "停止中") if self.locale == "ja" else (
+                        "Enabled" if job.enabled else "Disabled")
+                    self.home_saved_jobs.insert("end", f"{job.name} — {state}")
         try:
             configured = self.google.has_client_config()
             token_present = self.google.has_token()
