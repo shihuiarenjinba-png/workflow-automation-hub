@@ -91,12 +91,20 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         self.assertIn("はじめに", self.app.notebook.tab(0, "text"))
         self.assertIn("Blogger", self.app.t("home_what"))
         buttons = self._buttons(self.app.home_tab)
-        self.assertEqual(len(buttons), 4)
+        self.assertEqual(len(buttons), 5)
         for button, expected_tab in zip(
-            buttons, (self.app.google_tab, self.app.jobs_tab, self.app.jobs_tab, self.app.schedule_tab)
+            buttons, (self.app.google_tab, self.app.jobs_tab, self.app.jobs_tab,
+                      self.app.jobs_tab, self.app.schedule_tab)
         ):
             button.invoke()
             self.assertEqual(self.app.notebook.select(), str(expected_tab))
+
+    def test_consumer_home_shows_only_real_saved_jobs(self) -> None:
+        self.assertEqual(self.app.home_saved_jobs.get(0), "まだ登録がありません")
+        job = self._saved_job(name="自分のBlogger作業")
+        self.assertEqual(self.app.home_saved_jobs.get(0), "自分のBlogger作業 — 有効")
+        self.assertEqual(self.app.home_saved_jobs.size(), 1)
+        self.assertEqual(self.app.job_store.get(job.id).name, "自分のBlogger作業")
 
     def test_unsaved_edit_blocks_live_and_switch_prompts(self) -> None:
         old = self._saved_job()
