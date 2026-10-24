@@ -1,4 +1,5 @@
 # Workflow Automation Hub - Windows build / Windows ビルド
+param([string]$BasePythonPath = "")
 $ErrorActionPreference = "Stop"
 $LockFile = Join-Path $PSScriptRoot "requirements-lock.txt"
 
@@ -7,7 +8,17 @@ if (-not (Test-Path $LockFile)) {
 }
 
 if (-not (Test-Path ".venv")) {
-    py -3 -m venv .venv
+    if ($BasePythonPath) {
+        if (-not (Test-Path -LiteralPath $BasePythonPath -PathType Leaf)) {
+            throw "Base Python executable not found: $BasePythonPath"
+        }
+        & $BasePythonPath -m venv .venv
+    } else {
+        python -m venv .venv
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Virtual environment creation failed / 仮想環境の作成に失敗しました"
+    }
 }
 
 $python = Join-Path $PWD ".venv\Scripts\python.exe"
@@ -56,3 +67,4 @@ foreach ($EvidenceFile in $EvidenceFiles) {
 
 Write-Host "Build complete / ビルド完了: dist\WorkflowAutomationHub.exe"
 Write-Host "ZIP packaging is intentionally blocked until a formal product LICENSE is selected; package_release.ps1 fails closed for RC and Sales modes."
+
