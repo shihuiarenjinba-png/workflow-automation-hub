@@ -152,7 +152,7 @@ class WindowsGuiSmokeTests(unittest.TestCase):
         self.app.link_var.set("https://example.com/unsaved")
         self.app.language_var.set("English")
         self.app.on_language_change()
-        self.assertEqual(self.app.notebook.tab(self.app.notebook.select(), "text"), "2 Link Rules & Run")
+        self.assertEqual(self.app.notebook.tab(self.app.notebook.select(), "text"), "2 Add links")
         self.assertEqual(self.app.selected_job_id, job.id)
         self.assertEqual(self.app.target_var.get(), "unsaved custom target")
         self.assertEqual(self.app.link_var.get(), "https://example.com/unsaved")
