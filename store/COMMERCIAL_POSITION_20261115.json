@@ -1,0 +1,29 @@
+{
+  "schema": "standard_product_commercial_position_v1",
+  "updated": "2026-11-15",
+  "product": "hub",
+  "edition": "standard",
+  "launch_model": "FREE",
+  "actual_store_price_change_authorized": false,
+  "rationale": "無料公開候補。現状の中心価値はBlogger記事へのリンク追加で用途が狭く、Google OAuth初期設定の負担もある。まず無料でニーズを検証し、継続利用が確認できてから課金候補へ上げる。",
+  "release_gates": [
+    "MSIX/Store提出経路の最終化",
+    "Google/Blogger接続手順の人間QA",
+    "日英Store画像",
+    "無料価格設定のオーナー承認"
+  ],
+  "paid_upgrade_gates": [
+    "OAuth設定が画面案内だけで迷わず完了",
+    "リンク追加ルール作成が初見で理解できる",
+    "試運転結果が件数/対象で明確",
+    "実行履歴とエラー原因が見える"
+  ],
+  "common_rules": {
+    "jp_en_parity_required": true,
+    "first_success_target_minutes": 3,
+    "preview_before_side_effects": true,
+    "visible_results_required": true,
+    "do_not_advertise_unavailable_features": true,
+    "store_price_or_market_change_requires_owner_approval": true
+  }
+}
