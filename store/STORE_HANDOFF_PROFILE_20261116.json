@@ -1,0 +1,49 @@
+{
+  "schema_version": "store-handoff-profile/1",
+  "product": {
+    "id": "workflow-automation-hub",
+    "type": "app",
+    "name": "Workflow Automation Hub",
+    "edition": "standard",
+    "summary": "Add deterministic links to user-managed Google Blogger posts with preview, backup and guarded scheduling.",
+    "submission_kind": "new",
+    "submission_route": "msix_pwa_app",
+    "repository": "https://github.com/shihuiarenjinba-png/workflow-automation-hub",
+    "source_ref": "codex/hub-standard-consumer-ui-20261113",
+    "market_preset": ""
+  },
+  "identity": {
+    "store_id": "9P6SXJNNB5KK",
+    "name": "OkinawaDesktopTools.WorkflowAutomationHub",
+    "publisher": "CN=46263F21-A700-41DB-8C9B-114C22FB82FC",
+    "version": "1.0.0.0",
+    "architecture": "x64",
+    "package_family_name": "OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgfh58",
+    "package_sid": ""
+  },
+  "commercial": {
+    "model": "free",
+    "strategy": "free_launch",
+    "currency": "JPY",
+    "free_trial": "none"
+  },
+  "distribution": {
+    "audience": "PRIVATE_AUDIENCE_TEST"
+  },
+  "security_fields": {
+    "local_file_folder_access": true,
+    "external_network": true,
+    "external_account_required": true,
+    "camera": false,
+    "microphone": false,
+    "location": false,
+    "restricted_capability_runFullTrust": true,
+    "non_microsoft_driver_or_nt_service": false
+  },
+  "release_holds": [
+    "LOCAL_GOOGLE_BLOGGER_ACCEPTANCE",
+    "LOCAL_TASK_SCHEDULER_ACCEPTANCE",
+    "LIVE_PARTNER_CENTER_REVERIFY",
+    "OWNER_ASSET_SECURITY_APPROVAL"
+  ]
+}
