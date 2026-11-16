@@ -102,6 +102,9 @@ jobs:
             store/STORE_LISTING_DRAFT_JA_EN.md
             store/PRIVACY_POLICY.md
             store/RUNFULLTRUST_JUSTIFICATION.md
+            SBOM.cyclonedx.json
+            THIRD_PARTY_NOTICES.md
+            requirements-lock.txt
           if-no-files-found: error
       - name: Upload non-package build evidence / ZIP前ビルド証跡を保存
         uses: actions/upload-artifact@v4
