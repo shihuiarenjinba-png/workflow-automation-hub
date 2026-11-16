@@ -41,6 +41,13 @@ foreach ($p in @($stage,$unpack)) {
 }
 New-Item -ItemType Directory -Path (Join-Path $stage "Assets") -Force | Out-Null
 Copy-Item -LiteralPath $exe -Destination (Join-Path $stage "WorkflowAutomationHub.exe")
+foreach ($evidenceName in @("SBOM.cyclonedx.json","THIRD_PARTY_NOTICES.md","requirements-lock.txt")) {
+    $sourceEvidence = Join-Path $repoRoot $evidenceName
+    if (-not (Test-Path -LiteralPath $sourceEvidence -PathType Leaf)) {
+        throw "Missing dependency evidence for Store package: $evidenceName"
+    }
+    Copy-Item -LiteralPath $sourceEvidence -Destination (Join-Path $stage $evidenceName)
+}
 $manifestText = Get-Content -LiteralPath (Join-Path $PSScriptRoot "AppxManifest.template.xml") -Raw -Encoding UTF8
 $manifestText = $manifestText.Replace("__PACKAGE_IDENTITY_NAME__", [string]$identity.package_identity_name).Replace(
     "__PUBLISHER__", [string]$identity.publisher).Replace(
@@ -112,6 +119,18 @@ New-Item -ItemType Directory -Path $unpack -Force | Out-Null
 & $makeappx.FullName unpack /p $msix /d $unpack
 if ($LASTEXITCODE -ne 0) { throw "MakeAppx unpack FAILED: $LASTEXITCODE" }
 Assert-Manifest (Join-Path $unpack "AppxManifest.xml")
+foreach ($evidenceName in @("SBOM.cyclonedx.json","THIRD_PARTY_NOTICES.md","requirements-lock.txt")) {
+    $sourceEvidence = Join-Path $stage $evidenceName
+    $unpackedEvidence = Join-Path $unpack $evidenceName
+    if (-not (Test-Path -LiteralPath $unpackedEvidence -PathType Leaf)) {
+        throw "Dependency evidence missing after MSIX roundtrip: $evidenceName"
+    }
+    $sourceEvidenceSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceEvidence).Hash.ToLowerInvariant()
+    $unpackedEvidenceSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $unpackedEvidence).Hash.ToLowerInvariant()
+    if ($sourceEvidenceSha -cne $unpackedEvidenceSha) {
+        throw "Dependency evidence changed after MSIX roundtrip: $evidenceName"
+    }
+}
 $sourceSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
 $unpackedSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $unpack "WorkflowAutomationHub.exe")).Hash.ToLowerInvariant()
 if ($sourceSha -cne $unpackedSha) { throw "MSIX EXE hash changed after pack/unpack" }
@@ -134,6 +153,7 @@ $report = [ordered]@{
     msix_sha256 = $packageSha
     manifest_identity_verified = $true
     makeappx_pack_unpack = "PASS"
+    dependency_evidence_in_package = $true
     signed = $false
     approved_logo = $false
     manual_windows_acceptance = $false
