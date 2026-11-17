@@ -13,12 +13,22 @@ customer-facing Store/privacy/runFullTrust evidence.
 
 ## Local preflight
 
-1. Checkout the exact source SHA from `store-product-handoff.json`.
-2. Run the full unit suite.
-3. Require exact MSIX SHA match against handoff + checksum file.
-4. Unpack with MakeAppx for inspection without changing Windows trust policy.
-5. Require unpacked EXE SHA == handoff EXE SHA.
-6. Verify JP/EN UI and 100/125/150% DPI.
+GitHub CI is the primary test environment. Do not rerun the full unit suite locally
+as a mandatory Store gate after the exact artifact has already passed CI.
+
+1. Use the exact successful GitHub Store artifact and `store-product-handoff.json`.
+2. Confirm the local MSIX exists and re-hash it against the handoff + checksum file.
+3. Use Windows-all-auto's common local pre-upload conveyor to unpack the same MSIX and
+   verify Manifest Identity / Publisher / Version / Architecture and the unpacked EXE SHA.
+4. Do not rebuild the product locally and do not substitute a different package.
+5. Do not weaken Windows trust policy or add a temporary certificate merely to run an
+   unsigned draft.
+6. Perform only Windows-specific/product-specific checks GitHub CI cannot prove,
+   including JP/EN, real OS DPI, real OAuth/test-blog behavior and Task Scheduler.
+
+The common local entrypoint is Windows-all-auto
+`scripts/run_store_preupload_readiness.ps1`. Its READY state is an upload-approval
+boundary only and performs no Store upload/certification/publish.
 
 ## Controlled integration acceptance
 
