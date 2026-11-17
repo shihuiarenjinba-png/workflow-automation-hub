@@ -1,26 +1,64 @@
-# Store readiness status — updated 2026-10-21
+# Workflow Automation Hub — Store readiness status
 
-**DRAFT / NOT READY FOR SUBMISSION**
+Updated: 2026-11-16 JST
 
-Validated functional source head: `4bfaccaf2f3e41c8932bc6abfdfbe750b7a69d8a`.
+**GITHUB ENGINEERING COMPLETE / LOCAL GOOGLE-BLOGGER QA HOLD / STORE WRITE HOLD**
 
-## Verified
+Repository branch: `codex/hub-standard-consumer-ui-20261113`  
+Draft PR: #12
 
-- Local code tests: 99 passed; 10 subtests passed.
-- Windows CI run `39442627683` at head `64a3f5c5573e2343f2fd579da9fa618cce512682`: PASS, including tests, GUI evidence, EXE build, and unsigned MSIX draft/upload.
-- Fresh unsigned MSIX build/round-trip: PASS; SHA256 `f13d6cc86f3dd8f08f62195fe4a1a883c8532b3f3896839f2af5818d76135ebc`.
-- Local-validation signed copy SHA256 `6b4b02848d181b30685466e792df1799dc4b6d80f2ad535ca89dbc24aab3fc49`; signer matched thumbprint `60BB363D9BE876439137DFB31247952463106BDD`.
-- Owner-confirmed Partner Center Identity Name, Publisher, and PFN now match the manifest and Windows API calculation exactly. The historical 12-character PFN transcription is archived and excluded from builds.
+## GitHub-side completed
 
-## Not yet verified
+- bilingual first-run workflow;
+- preview-before-live and fail-closed write guards;
+- Task Scheduler approval contract;
+- Windows GUI smoke and simulated DPI-layout tests;
+- source self-test and packaged EXE self-test;
+- privacy-conscious diagnostics check;
+- CycloneDX SBOM + THIRD_PARTY_NOTICES + locked dependencies;
+- unsigned MSIX build and Store identity validation;
+- SBOM/notices/requirements embedded into the MSIX and checked after pack/unpack;
+- exact-package `store-product-handoff/2` generation;
+- local final-QA runbook and Store documents bundled with the Store artifact.
 
-MSIX installation, Start-menu launch, installed JP/EN UI, persistence/restart, safe local I/O, Store screenshots, WACK, and Partner Center package upload validation are NOT TESTED. Google OAuth/Blogger live use remains prohibited without an owner-authorized non-production account. External production OAuth also needs a public privacy-policy URL on an owner-verified domain. No certificate-store change is authorized.
+Local QA must use the exact GitHub artifact; do not rebuild before acceptance.
 
-## Submission safeguards
+## Canonical Store identity
 
-- Microsoft Standard Application License Terms (SALT) are the default when **Additional license terms** is left blank. A custom EULA is not an engineering prerequisite unless the owner chooses different terms.
-- Prices and Japan/United States markets remain proposals only. Disable future-market automatic expansion.
-- Immediately before certification submission, select **Don't publish this submission until I select Publish now**. The default can publish automatically after certification.
-- AI-generated icons remain unapproved concepts and are not package or Store assets.
-- Certificate-store changes, certification submission, publication, and main/release merges remain unauthorized.
-- Package upload is a separate Gate A action after a final MSIX, installed-package verification, completed assets/notices, fixed SHA256, and owner confirmation.
+- Store ID: `9P6SXJNNB5KK`
+- Identity: `OkinawaDesktopTools.WorkflowAutomationHub`
+- Publisher: `CN=46263F21-A700-41DB-8C9B-114C22FB82FC`
+- PFN: `OkinawaDesktopTools.WorkflowAutomationHub_j8yefg9jgfh58`
+- technical MSIX version: `1.0.0.0`
+
+Repository identity remains evidence only. Live Partner Center must be reverified.
+
+## Commercial position
+
+Launch model: FREE candidate.
+
+No Partner Center price/market change or Blogger production mutation is authorized by
+this repository state.
+
+## Local-only remaining gates
+
+Use only a controlled non-production Google/Blogger environment:
+
+- physical JP/EN + 100/125/150% DPI;
+- OAuth Desktop app connection;
+- manageable-blog selection;
+- Dry Run;
+- one controlled test-blog mutation;
+- backup-before-write;
+- duplicate-link prevention;
+- ambiguous-write behavior requiring a fresh preview;
+- Task Scheduler register/run/unregister;
+- restart/normal exit;
+- diagnostics privacy;
+- live Partner Center reverify;
+- owner assets/security/audience review.
+
+Return local PASS through an exact-package `local-final-qa-receipt/1`.
+
+After that: live reverify -> owner fields -> VALIDATE_ONLY -> DRY_RUN -> separate upload
+approval. Certification and Publish remain separate gates.

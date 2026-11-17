@@ -79,6 +79,15 @@ jobs:
           if ($report.store_id -cne "9P6SXJNNB5KK") { throw "Wrong Store ID" }
           $actualCommit = (git rev-parse HEAD).Trim()
           if ($report.source_commit -cne $actualCommit) { throw "MSIX source commit mismatch" }
+      - name: Generate exact-package Store handoff
+        shell: pwsh
+        run: |
+          python store/generate_store_handoff.py `
+            --profile store/STORE_HANDOFF_PROFILE_20261116.json `
+            --report store-out/msix_validation.json `
+            --output store-out/store-product-handoff.json `
+            --artifact-run-id $env:GITHUB_RUN_ID
+          if ($LASTEXITCODE -ne 0) { throw "Store handoff generation failed" }
       - name: Upload UNSIGNED non-release Store MSIX / 未署名検証MSIXを保存
         uses: actions/upload-artifact@v4
         with:
@@ -87,6 +96,15 @@ jobs:
             store-out/*.msix
             store-out/msix_validation.json
             store-out/msix.sha256.txt
+            store-out/store-product-handoff.json
+            store/STORE_HANDOFF_PROFILE_20261116.json
+            store/LOCAL_FINAL_QA_AND_STORE_HANDOFF_20261116.md
+            store/STORE_LISTING_DRAFT_JA_EN.md
+            store/PRIVACY_POLICY.md
+            store/RUNFULLTRUST_JUSTIFICATION.md
+            SBOM.cyclonedx.json
+            THIRD_PARTY_NOTICES.md
+            requirements-lock.txt
           if-no-files-found: error
       - name: Upload non-package build evidence / ZIP前ビルド証跡を保存
         uses: actions/upload-artifact@v4
