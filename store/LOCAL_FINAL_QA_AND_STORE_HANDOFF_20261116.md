@@ -27,8 +27,9 @@ as a mandatory Store gate after the exact artifact has already passed CI.
    including JP/EN, real OS DPI, real OAuth/test-blog behavior and Task Scheduler.
 
 The common local entrypoint is Windows-all-auto
-`scripts/run_store_preupload_readiness.ps1`. Its READY state is an upload-approval
-boundary only and performs no Store upload/certification/publish.
+`scripts/run_store_preupload_readiness.ps1`. The only successful pre-upload state is
+`READY_FOR_MSIX_UPLOAD_APPROVAL`; it is an upload-approval boundary only and performs
+no Store upload/certification/publish.
 
 ## Controlled integration acceptance
 
