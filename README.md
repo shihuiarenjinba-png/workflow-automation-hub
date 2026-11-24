@@ -28,6 +28,12 @@ python workflow_hub.py workflow.example.json --dry-run
 python workflow_hub.py workflow.example.json
 ```
 
+初心者向けのGUIも利用できます。Dry Runは初期状態で有効です。実ファイル変更やHTTP呼び出しを行う場合は、Dry Runを解除すると実行確認が表示されます。
+
+```powershell
+python workflow_gui.py
+```
+
 ## 設計上の原則
 
 1. 同じ設定と入力なら同じ動作をする
